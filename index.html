@@ -1,214 +1,309 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Marcação Botox</title>
-<link rel="manifest" href="manifest.json">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Botox Markers App</title>
 <style>
-    body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        text-align: center;
-        background: #f4f4f4;
-    }
-    header {
-        background: #2c3e50;
-        color: white;
-        padding: 10px;
-        font-size: 20px;
-    }
-    #upload {
-        margin: 15px;
-    }
-    #container {
-        position: relative;
-        display: inline-block;
-        border: 2px solid #ccc;
-        background: white;
-    }
-    #image {
-        max-width: 90vw;
-        max-height: 60vh;
-    }
-    .marker {
-        position: absolute;
-        width: 20px;
-        height: 20px;
-        background: red;
-        color: white;
-        border-radius: 50%;
-        text-align: center;
-        line-height: 20px;
-        font-size: 12px;
-        cursor: move;
-        user-select: none;
-    }
-    #legend {
-        margin-top: 10px;
-        padding: 10px;
-        background: white;
-        border-top: 2px solid #ccc;
-        text-align: left;
-        max-width: 90vw;
-        display: inline-block;
-    }
-    #legend input {
-        width: 70%;
-        padding: 5px;
-        margin-right: 5px;
-    }
-    button {
-        padding: 8px 12px;
-        margin: 5px;
-        border: none;
-        background: #27ae60;
-        color: white;
-        cursor: pointer;
-        border-radius: 5px;
-    }
-    button:hover {
-        background: #2ecc71;
-    }
+  :root{
+    --accent:#d42f2f;   /* cor do marcador e dos badges da legenda */
+    --ink:#222;
+    --bg:#f0f2f5;
+    --card:#fff;
+    --radius:12px;
+    --shadow:0 6px 18px rgba(0,0,0,.08);
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    margin:0; background:var(--bg); color:var(--ink);
+    display:flex; flex-direction:column; align-items:center; padding:12px;
+  }
+  h2{margin:8px 0 12px; text-align:center}
+  .controls{
+    display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:14px;
+  }
+  .controls input[type=file], .controls button{
+    padding:8px 12px; font-size:14px; border-radius:8px; border:1px solid #cfcfcf;
+    background:#fff; cursor:pointer;
+  }
+  .controls button.primary{ background: var(--accent); color:#fff; border: none; }
+  .layout{
+    display:grid; grid-template-columns: 1fr 340px; gap:12px; width:100%; max-width:1100px;
+  }
+  @media (max-width: 900px){
+    .layout{ grid-template-columns: 1fr; }
+  }
+  /* Área da imagem */
+  #image-container{
+    position:relative; width:100%; background:var(--card);
+    border:2px solid #ddd; border-radius: var(--radius); overflow:hidden; box-shadow: var(--shadow);
+    display:flex; align-items:center; justify-content:center; min-height: 360px;
+  }
+  #target-image{
+    max-width:100%; height:auto; display:block; touch-action: manipulation; user-select:none;
+  }
+  .placeholder{
+    text-align:center; color:#666; padding:18px;
+  }
+  /* Marcadores */
+  .marker{
+    position:absolute; width:22px; height:22px; border-radius:50%;
+    background:var(--accent); color:#fff; font-weight:700; font-size:12px;
+    display:flex; align-items:center; justify-content:center;
+    transform: translate(-50%, -50%);
+    border:1px solid #fff; box-shadow: 0 0 6px rgba(0,0,0,.35);
+    user-select: none; touch-action: none; /* importante para drag no touch */
+  }
+  /* Legendas */
+  aside{
+    background:var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding:12px;
+  }
+  .legend-list{ max-height: 520px; overflow:auto; margin-top:8px; }
+  .legend-item{
+    display:flex; gap:8px; align-items:center; border:1px solid #eee; border-radius:10px;
+    padding:8px; margin-bottom:8px; background:#fafafa;
+  }
+  .badge{
+    width:22px; height:22px; border-radius:50%; background:var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;
+    flex: 0 0 22px;
+  }
+  .legend-item input{
+    flex:1; padding:6px 8px; border-radius:8px; border:1px solid #ddd; font-size:14px;
+    background:#fff;
+  }
+  .legend-item button{
+    border:none; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:13px;
+  }
+  .legend-item button:hover{ background:#e3e3e3; }
+  .hint{ font-size:12px; color:#666; }
 </style>
 </head>
 <body>
 
-<header>Marcação Botox</header>
+  <h2>Botox Markers App</h2>
 
-<input type="file" id="upload" accept="image/*">
-<div id="container">
-    <img id="image" alt="Foto do paciente">
-</div>
+  <div class="controls">
+    <label for="image-input" style="display:inline-block;">
+      <input type="file" accept="image/*" id="image-input" style="display:none">
+      <span class="controls buttonlike" style="padding:8px 12px;border-radius:8px;border:1px solid #cfcfcf;background:#fff;cursor:pointer;">
+        Carregar foto (obrigatório)
+      </span>
+    </label>
+    <button id="exportBtn" class="primary">Exportar PDF</button>
+  </div>
 
-<div id="legend">
-    <h3>Legenda</h3>
-    <div id="legendList"></div>
-</div>
+  <div class="layout">
+    <div id="image-container">
+      <div class="placeholder">Carregue uma imagem para começar</div>
+      <img id="target-image" alt="" />
+      <!-- marcadores aparecem aqui, posicionados por porcentagem -->
+    </div>
 
-<button onclick="exportPDF()">Exportar PDF</button>
+    <aside>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <strong>Legendas</strong>
+        <span class="hint">Toque/click na imagem para adicionar • Arraste pontos para ajustar</span>
+      </div>
+      <div class="legend-list" id="legend-list"></div>
+    </aside>
+  </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script>
-let count = 1;
-let legendData = [];
-let imageElement = document.getElementById('image');
-let container = document.getElementById('container');
-let legendList = document.getElementById('legendList');
+  <!-- libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-document.getElementById('upload').addEventListener('change', function(e) {
-    let file = e.target.files[0];
-    let reader = new FileReader();
-    reader.onload = function(event) {
-        imageElement.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
-});
+  <script>
+    const imageInput   = document.getElementById('image-input');
+    const image        = document.getElementById('target-image');
+    const container    = document.getElementById('image-container');
+    const legendList   = document.getElementById('legend-list');
+    const exportBtn    = document.getElementById('exportBtn');
 
-container.addEventListener('click', function(e) {
-    if (!imageElement.src) {
-        alert("Envie uma foto primeiro!");
+    let markers = []; // {number, xPct, yPct, text, el}
+    let counter = 0;
+    let imageLoaded = false;
+
+    // Upload obrigatório
+    imageInput.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        image.src = ev.target.result;
+        image.onload = () => {
+          imageLoaded = true;
+          // limpar qualquer estado anterior
+          markers = [];
+          counter = 0;
+          legendList.innerHTML = '';
+          Array.from(container.querySelectorAll('.marker')).forEach(m => m.remove());
+          container.querySelector('.placeholder')?.remove();
+        }
+      };
+      reader.readAsDataURL(f);
+    });
+
+    // Adicionar marcador (somente se imagem estiver carregada)
+    image.addEventListener('click', (e) => {
+      if(!imageLoaded) return;
+
+      const rect = container.getBoundingClientRect(); // usar container como base
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Converter para porcentagem para manter posição em redimensionamentos
+      const xPct = (x / rect.width) * 100;
+      const yPct = (y / rect.height) * 100;
+
+      addMarkerAt(xPct, yPct);
+    });
+
+    function addMarkerAt(xPct, yPct){
+      counter++;
+      const el = document.createElement('div');
+      el.className = 'marker';
+      el.textContent = counter;
+      el.dataset.number = counter;
+      setMarkerPosition(el, xPct, yPct);
+      container.appendChild(el);
+
+      const marker = { number: counter, xPct, yPct, text: '', el };
+      markers.push(marker);
+
+      // Tornar arrastável (Pointer Events)
+      makeDraggable(el, marker);
+
+      // Criar item de legenda com botão de excluir
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.dataset.number = counter;
+      item.innerHTML = `
+        <div class="badge">${counter}</div>
+        <input type="text" placeholder="Descrição da marcação #${counter}">
+        <button type="button" aria-label="Excluir #${counter}">Excluir</button>
+      `;
+      legendList.appendChild(item);
+
+      // Input legenda -> sincroniza texto
+      const input = item.querySelector('input');
+      input.addEventListener('input', () => {
+        const m = markers.find(mm => mm.number === marker.number);
+        if(m) m.text = input.value;
+      });
+
+      // Botão excluir -> remove ponto e legenda
+      item.querySelector('button').addEventListener('click', () => {
+        removeMarker(marker.number);
+      });
+    }
+
+    function setMarkerPosition(el, xPct, yPct){
+      // clamp leve para evitar sair da borda
+      const cx = Math.max(0, Math.min(100, xPct));
+      const cy = Math.max(0, Math.min(100, yPct));
+      el.style.left = cx + '%';
+      el.style.top  = cy + '%';
+    }
+
+    function removeMarker(number){
+      // remove DOM do marcador
+      const idx = markers.findIndex(m => m.number === number);
+      if(idx !== -1){
+        markers[idx].el.remove();
+        markers.splice(idx, 1);
+      }
+      // remove legenda
+      const li = legendList.querySelector(`.legend-item[data-number="${number}"]`);
+      li?.remove();
+    }
+
+    function makeDraggable(el, marker){
+      let dragging = false;
+      function onDown(e){
+        // habilitar captura de ponteiro (funciona para mouse e touch)
+        dragging = true;
+        el.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      }
+      function onMove(e){
+        if(!dragging) return;
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const xPct = (x / rect.width) * 100;
+        const yPct = (y / rect.height) * 100;
+        setMarkerPosition(el, xPct, yPct);
+        marker.xPct = Math.max(0, Math.min(100, xPct));
+        marker.yPct = Math.max(0, Math.min(100, yPct));
+      }
+      function onUp(e){
+        dragging = false;
+        try{ el.releasePointerCapture(e.pointerId); }catch(_){}
+      }
+      el.addEventListener('pointerdown', onDown);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    }
+
+    // Ao redimensionar a janela (ou girar o dispositivo), como usamos %, os pontos permanecem corretos
+    window.addEventListener('resize', () => {
+      // nada específico necessário; posição é em %
+      // se quiser forçar reflow, poderíamos reaplicar setMarkerPosition:
+      markers.forEach(m => setMarkerPosition(m.el, m.xPct, m.yPct));
+    });
+
+    // Exportação em PDF
+    exportBtn.addEventListener('click', async () => {
+      if(!imageLoaded){
+        alert('Carregue uma imagem antes de exportar.');
         return;
-    }
-    if (e.target.tagName === 'IMG') {
-        let rect = imageElement.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
+      }
+      const area = container;
+      // aumentar escala para melhor qualidade
+      const canvas = await html2canvas(area, { scale: Math.min(2, window.devicePixelRatio || 1), backgroundColor: null });
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
-        let marker = document.createElement('div');
-        marker.classList.add('marker');
-        marker.style.left = (x - 10) + 'px';
-        marker.style.top = (y - 10) + 'px';
-        marker.innerText = count;
-        marker.draggable = true;
-        marker.dataset.index = count;
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ unit:'pt', format:'a4' });
 
-        marker.addEventListener('dragstart', dragStart);
-        marker.addEventListener('dragend', dragEnd);
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 40;
 
-        container.appendChild(marker);
+      // dimensionar imagem (máx 60% da altura da página)
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+      const ratio = Math.min((pageW - margin*2) / imgW, (pageH * 0.6) / imgH);
+      const drawW = imgW * ratio;
+      const drawH = imgH * ratio;
 
-        let input = document.createElement('input');
-        input.placeholder = "Descrição do ponto " + count;
-        input.dataset.index = count;
+      pdf.addImage(imgData, 'JPEG', margin, margin, drawW, drawH);
 
-        let btn = document.createElement('button');
-        btn.innerText = "Remover";
-        btn.onclick = function() {
-            document.querySelector(`.marker[data-index='${input.dataset.index}']`).remove();
-            input.remove();
-            btn.remove();
-            legendData = legendData.filter(l => l.index != input.dataset.index);
-        };
+      let y = margin + drawH + 20;
+      pdf.setFontSize(14);
+      pdf.text('Legendas', margin, y);
+      y += 10;
+      pdf.setFontSize(11);
 
-        legendList.appendChild(input);
-        legendList.appendChild(btn);
+      const lines = markers
+        .sort((a,b)=>a.number-b.number)
+        .map(m => `#${m.number} — ${m.text || ''}`);
 
-        legendData.push({ index: count, x: x, y: y, text: "" });
+      const maxWidth = pageW - margin*2;
+      for(const line of lines){
+        const wrapped = pdf.splitTextToSize(line, maxWidth);
+        for(const piece of wrapped){
+          if(y > pageH - margin){ pdf.addPage(); y = margin; }
+          pdf.text(piece, margin, y);
+          y += 14;
+        }
+      }
 
-        input.addEventListener('input', function() {
-            let item = legendData.find(l => l.index == this.dataset.index);
-            if (item) item.text = this.value;
-        });
-
-        count++;
-    }
-});
-
-let dragOffsetX, dragOffsetY;
-
-function dragStart(e) {
-    dragOffsetX = e.offsetX;
-    dragOffsetY = e.offsetY;
-}
-
-function dragEnd(e) {
-    let rect = container.getBoundingClientRect();
-    let marker = e.target;
-    let x = e.clientX - rect.left - dragOffsetX;
-    let y = e.clientY - rect.top - dragOffsetY;
-    marker.style.left = x + 'px';
-    marker.style.top = y + 'px';
-
-    let item = legendData.find(l => l.index == marker.dataset.index);
-    if (item) {
-        item.x = x + 10;
-        item.y = y + 10;
-    }
-}
-
-function exportPDF() {
-    const { jsPDF } = window.jspdf;
-    let pdf = new jsPDF();
-
-    let imgData = imageElement.src;
-    pdf.addImage(imgData, 'JPEG', 10, 10, 180, 120);
-
-    legendData.forEach(item => {
-        pdf.setFillColor(255, 0, 0);
-        pdf.circle(10 + (item.x / imageElement.width) * 180,
-                   10 + (item.y / imageElement.height) * 120, 2, 'F');
-        pdf.text(item.index.toString(),
-                 10 + (item.x / imageElement.width) * 180 + 3,
-                 10 + (item.y / imageElement.height) * 120);
+      pdf.save('botox_marcacoes.pdf');
     });
-
-    pdf.text("Legenda:", 10, 140);
-    legendData.forEach((item, i) => {
-        pdf.text(item.index + ": " + (item.text || ""), 10, 145 + (i * 5));
-    });
-
-    pdf.save("marcacao.pdf");
-}
-</script>
-
-<!-- Service Worker para PWA -->
-<script>
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js');
-}
-</script>
-
+  </script>
 </body>
 </html>
