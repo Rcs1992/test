@@ -1,0 +1,214 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marcação Botox</title>
+<link rel="manifest" href="manifest.json">
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        text-align: center;
+        background: #f4f4f4;
+    }
+    header {
+        background: #2c3e50;
+        color: white;
+        padding: 10px;
+        font-size: 20px;
+    }
+    #upload {
+        margin: 15px;
+    }
+    #container {
+        position: relative;
+        display: inline-block;
+        border: 2px solid #ccc;
+        background: white;
+    }
+    #image {
+        max-width: 90vw;
+        max-height: 60vh;
+    }
+    .marker {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        background: red;
+        color: white;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 20px;
+        font-size: 12px;
+        cursor: move;
+        user-select: none;
+    }
+    #legend {
+        margin-top: 10px;
+        padding: 10px;
+        background: white;
+        border-top: 2px solid #ccc;
+        text-align: left;
+        max-width: 90vw;
+        display: inline-block;
+    }
+    #legend input {
+        width: 70%;
+        padding: 5px;
+        margin-right: 5px;
+    }
+    button {
+        padding: 8px 12px;
+        margin: 5px;
+        border: none;
+        background: #27ae60;
+        color: white;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+    button:hover {
+        background: #2ecc71;
+    }
+</style>
+</head>
+<body>
+
+<header>Marcação Botox</header>
+
+<input type="file" id="upload" accept="image/*">
+<div id="container">
+    <img id="image" alt="Foto do paciente">
+</div>
+
+<div id="legend">
+    <h3>Legenda</h3>
+    <div id="legendList"></div>
+</div>
+
+<button onclick="exportPDF()">Exportar PDF</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+let count = 1;
+let legendData = [];
+let imageElement = document.getElementById('image');
+let container = document.getElementById('container');
+let legendList = document.getElementById('legendList');
+
+document.getElementById('upload').addEventListener('change', function(e) {
+    let file = e.target.files[0];
+    let reader = new FileReader();
+    reader.onload = function(event) {
+        imageElement.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+});
+
+container.addEventListener('click', function(e) {
+    if (!imageElement.src) {
+        alert("Envie uma foto primeiro!");
+        return;
+    }
+    if (e.target.tagName === 'IMG') {
+        let rect = imageElement.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+
+        let marker = document.createElement('div');
+        marker.classList.add('marker');
+        marker.style.left = (x - 10) + 'px';
+        marker.style.top = (y - 10) + 'px';
+        marker.innerText = count;
+        marker.draggable = true;
+        marker.dataset.index = count;
+
+        marker.addEventListener('dragstart', dragStart);
+        marker.addEventListener('dragend', dragEnd);
+
+        container.appendChild(marker);
+
+        let input = document.createElement('input');
+        input.placeholder = "Descrição do ponto " + count;
+        input.dataset.index = count;
+
+        let btn = document.createElement('button');
+        btn.innerText = "Remover";
+        btn.onclick = function() {
+            document.querySelector(`.marker[data-index='${input.dataset.index}']`).remove();
+            input.remove();
+            btn.remove();
+            legendData = legendData.filter(l => l.index != input.dataset.index);
+        };
+
+        legendList.appendChild(input);
+        legendList.appendChild(btn);
+
+        legendData.push({ index: count, x: x, y: y, text: "" });
+
+        input.addEventListener('input', function() {
+            let item = legendData.find(l => l.index == this.dataset.index);
+            if (item) item.text = this.value;
+        });
+
+        count++;
+    }
+});
+
+let dragOffsetX, dragOffsetY;
+
+function dragStart(e) {
+    dragOffsetX = e.offsetX;
+    dragOffsetY = e.offsetY;
+}
+
+function dragEnd(e) {
+    let rect = container.getBoundingClientRect();
+    let marker = e.target;
+    let x = e.clientX - rect.left - dragOffsetX;
+    let y = e.clientY - rect.top - dragOffsetY;
+    marker.style.left = x + 'px';
+    marker.style.top = y + 'px';
+
+    let item = legendData.find(l => l.index == marker.dataset.index);
+    if (item) {
+        item.x = x + 10;
+        item.y = y + 10;
+    }
+}
+
+function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    let pdf = new jsPDF();
+
+    let imgData = imageElement.src;
+    pdf.addImage(imgData, 'JPEG', 10, 10, 180, 120);
+
+    legendData.forEach(item => {
+        pdf.setFillColor(255, 0, 0);
+        pdf.circle(10 + (item.x / imageElement.width) * 180,
+                   10 + (item.y / imageElement.height) * 120, 2, 'F');
+        pdf.text(item.index.toString(),
+                 10 + (item.x / imageElement.width) * 180 + 3,
+                 10 + (item.y / imageElement.height) * 120);
+    });
+
+    pdf.text("Legenda:", 10, 140);
+    legendData.forEach((item, i) => {
+        pdf.text(item.index + ": " + (item.text || ""), 10, 145 + (i * 5));
+    });
+
+    pdf.save("marcacao.pdf");
+}
+</script>
+
+<!-- Service Worker para PWA -->
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js');
+}
+</script>
+
+</body>
+</html>
