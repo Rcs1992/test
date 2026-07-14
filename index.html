@@ -918,7 +918,7 @@
     window.logout = function() {};
 
 // ==========================================
-// EYE TRACKING (WebGazer) - CORRIGIDO
+// EYE TRACKING (WebGazer) - VERSÃO CORRIGIDA
 // ==========================================
 (function() {
   let eyeTrackingActive = false;
@@ -926,39 +926,53 @@
   let DWELL_TIME = 1200;
   const eyeCursor = document.getElementById('eyeCursor');
   let calibrationInProgress = false;
+  let webgazerLoaded = false;
 
-  // Carrega o WebGazer via CDN
-  const script = document.createElement('script');
-  script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
-  script.onload = function() {
-    console.log('WebGazer carregado.');
-    if (localStorage.getItem('eyeTracking') === 'true') {
-      startEyeTracking(false);
+  // ---- Carrega o WebGazer via CDN ----
+  function loadWebGazer() {
+    return new Promise((resolve, reject) => {
+      if (typeof webgazer !== 'undefined') {
+        webgazerLoaded = true;
+        resolve();
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
+      script.onload = () => {
+        webgazerLoaded = true;
+        resolve();
+      };
+      script.onerror = () => reject(new Error('Falha ao carregar WebGazer.'));
+      document.head.appendChild(script);
+    });
+  }
+
+  // ---- Aguarda o carregamento antes de usar ----
+  function ensureWebGazer() {
+    if (!webgazerLoaded) {
+      return loadWebGazer();
     }
-  };
-  document.head.appendChild(script);
+    return Promise.resolve();
+  }
 
-  // ---- Função que define o listener de gaze ----
+  // ---- Define o listener de gaze (usado após calibração) ----
   function setupGazeListener() {
     if (typeof webgazer === 'undefined') return;
-    // Remove listeners antigos para evitar duplicação
-    webgazer.setGazeListener(null);
+    webgazer.setGazeListener(null); // remove listeners antigos
     webgazer.setGazeListener((data) => {
       if (data && eyeTrackingActive) {
-        // Atualiza a posição do cursor ocular
         eyeCursor.style.left = data.x + 'px';
         eyeCursor.style.top = data.y + 'px';
-        // Verifica o elemento sob o olhar
         const element = document.elementFromPoint(data.x, data.y);
         if (element) handleDwell(element);
       }
     });
   }
 
-  // ---- Lógica de dwell (clique por tempo) ----
+  // ---- Dwell (clique por tempo) ----
   function handleDwell(element) {
     if (!element) return;
-    // Ignora elementos que não devem ser clicados pelo olhar
+    // Ignora elementos que não devem ser clicados
     if (element.id === 'eyeCursor' ||
         element.closest('.sidebar') ||
         element.closest('.body-map-container') ||
@@ -977,7 +991,6 @@
     dwellTimer = setTimeout(() => {
       element.click();
       playFeedback();
-      // feedback visual breve
       element.style.transition = 'background 0.1s';
       element.style.background = 'rgba(255,255,0,0.5)';
       setTimeout(() => { element.style.background = ''; }, 200);
@@ -986,10 +999,10 @@
     dwellTimer._element = element;
   }
 
-  // ---- Inicia o rastreamento (sem recalibrar) ----
+  // ---- Inicia o rastreamento (após calibração ou direto) ----
   function startEyeTracking(clearData = false) {
     if (eyeTrackingActive) return;
-    if (typeof webgazer === 'undefined') {
+    if (!webgazerLoaded) {
       alert('WebGazer ainda não carregou. Tente novamente.');
       return;
     }
@@ -999,16 +1012,18 @@
       webgazer.clearData();
     }
 
-    // Configura o listener
     setupGazeListener();
-
-    // Inicia o WebGazer (se já estiver rodando, apenas reativa)
-    webgazer.begin();
-
-    eyeTrackingActive = true;
-    eyeCursor.style.display = 'block';
-    localStorage.setItem('eyeTracking', 'true');
-    console.log('Eye tracking iniciado.');
+    webgazer.begin()
+      .then(() => {
+        eyeTrackingActive = true;
+        eyeCursor.style.display = 'block';
+        localStorage.setItem('eyeTracking', 'true');
+        console.log('Eye tracking iniciado.');
+      })
+      .catch(err => {
+        console.error('Erro ao iniciar WebGazer:', err);
+        alert('Não foi possível acessar a câmera. Verifique as permissões.');
+      });
   }
 
   // ---- Para o rastreamento ----
@@ -1026,27 +1041,27 @@
     console.log('Eye tracking parado.');
   }
 
-  // ---- CALIBRAÇÃO (versão corrigida) ----
+  // ---- CALIBRAÇÃO (com API correta) ----
   function calibrateEye() {
-    if (typeof webgazer === 'undefined') {
-      alert('WebGazer não carregado.');
+    if (!webgazerLoaded) {
+      alert('WebGazer não carregado. Aguarde e tente novamente.');
       return;
     }
     if (calibrationInProgress) return;
     calibrationInProgress = true;
 
-    // 1. Para o tracking atual
+    // Para o tracking ativo
     if (eyeTrackingActive) {
       webgazer.end();
       eyeTrackingActive = false;
       eyeCursor.style.display = 'none';
     }
 
-    // 2. Limpa dados anteriores e remove listener antigo
+    // Limpa dados e remove listeners
     webgazer.clearData();
     webgazer.setGazeListener(null);
 
-    // 3. Mostra mensagem amigável
+    // Mostra mensagem de calibração
     const msg = document.createElement('div');
     msg.id = 'calibrationMessage';
     msg.style.cssText = `
@@ -1055,16 +1070,30 @@
       border-radius: 8px; font-size: 1.2em; z-index: 9999;
       box-shadow: 0 4px 8px rgba(0,0,0,0.5);
       pointer-events: none; text-align: center;
-      transition: opacity 0.3s;
     `;
     msg.textContent = '🔵 Calibração em andamento… Siga os pontos com os olhos.';
     document.body.appendChild(msg);
 
-    // 4. Inicia o WebGazer e a calibração
+    // Define o callback que será chamado quando a calibração terminar
+    webgazer.setCalibrationCompleteCallback(function() {
+      // Remove mensagem
+      const msgEl = document.getElementById('calibrationMessage');
+      if (msgEl) msgEl.remove();
+
+      // Reconfigura listener e ativa tracking
+      setupGazeListener();
+      eyeTrackingActive = true;
+      eyeCursor.style.display = 'block';
+      localStorage.setItem('eyeTracking', 'true');
+      calibrationInProgress = false;
+      playFeedback();
+      console.log('✅ Calibração concluída com sucesso.');
+    });
+
+    // Inicia o WebGazer e a calibração
     webgazer.begin()
       .then(() => {
         console.log('WebGazer iniciado. Iniciando calibração...');
-        // Chama explicitamente a calibração
         webgazer.calibrate();
       })
       .catch(err => {
@@ -1073,31 +1102,13 @@
         const msgEl = document.getElementById('calibrationMessage');
         if (msgEl) msgEl.remove();
         calibrationInProgress = false;
-        // Tenta reativar o tracking se estava ativo antes
+        // Tenta reativar se estava ativo antes
         if (localStorage.getItem('eyeTracking') === 'true') {
           startEyeTracking(false);
         }
       });
 
-    // 5. Aguarda o evento de fim de calibração
-    webgazer.on('calibrationEnd', function() {
-      // Remove a mensagem
-      const msgEl = document.getElementById('calibrationMessage');
-      if (msgEl) msgEl.remove();
-
-      // Reconfigura o listener e reativa o tracking
-      setupGazeListener();
-      eyeTrackingActive = true;
-      eyeCursor.style.display = 'block';
-      localStorage.setItem('eyeTracking', 'true');
-      calibrationInProgress = false;
-
-      // Pequeno feedback sonoro
-      playFeedback();
-      console.log('Calibração concluída com sucesso.');
-    });
-
-    // Fallback: se a calibração não disparar em 30 segundos, força
+    // Timeout de segurança (30s)
     setTimeout(() => {
       if (calibrationInProgress) {
         const msgEl = document.getElementById('calibrationMessage');
@@ -1105,7 +1116,6 @@
         setTimeout(() => {
           if (msgEl) msgEl.remove();
           calibrationInProgress = false;
-          // Reativa o tracking com os dados atuais (mesmo que ruins)
           startEyeTracking(false);
         }, 3000);
       }
@@ -1132,13 +1142,28 @@
   document.getElementById('stopEyeBtn')?.addEventListener('click', stopEyeTracking);
   document.getElementById('calibrateEyeBtn')?.addEventListener('click', calibrateEye);
 
+  // ---- CARREGA O WEBGAZER NA INICIALIZAÇÃO ----
+  loadWebGazer()
+    .then(() => {
+      console.log('WebGazer carregado com sucesso.');
+      // Se o usuário já tinha ativado, inicia automaticamente
+      if (localStorage.getItem('eyeTracking') === 'true') {
+        startEyeTracking(false);
+      }
+    })
+    .catch(err => {
+      console.error('Erro ao carregar WebGazer:', err);
+      alert('Não foi possível carregar o WebGazer. Verifique sua conexão.');
+    });
+
   // ---- DESLIGA AO SAIR ----
   window.addEventListener('beforeunload', function() {
     if (eyeTrackingActive && typeof webgazer !== 'undefined') {
       webgazer.end();
     }
   });
-})();  </script>
+})();
+  </script>
 
  </script>
 
