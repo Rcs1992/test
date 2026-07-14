@@ -1,309 +1,1133 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Botox Markers App</title>
-<style>
-  :root{
-    --accent:#d42f2f;   /* cor do marcador e dos badges da legenda */
-    --ink:#222;
-    --bg:#f0f2f5;
-    --card:#fff;
-    --radius:12px;
-    --shadow:0 6px 18px rgba(0,0,0,.08);
-  }
-  *{box-sizing:border-box}
-  body{
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    margin:0; background:var(--bg); color:var(--ink);
-    display:flex; flex-direction:column; align-items:center; padding:12px;
-  }
-  h2{margin:8px 0 12px; text-align:center}
-  .controls{
-    display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:14px;
-  }
-  .controls input[type=file], .controls button{
-    padding:8px 12px; font-size:14px; border-radius:8px; border:1px solid #cfcfcf;
-    background:#fff; cursor:pointer;
-  }
-  .controls button.primary{ background: var(--accent); color:#fff; border: none; }
-  .layout{
-    display:grid; grid-template-columns: 1fr 340px; gap:12px; width:100%; max-width:1100px;
-  }
-  @media (max-width: 900px){
-    .layout{ grid-template-columns: 1fr; }
-  }
-  /* Área da imagem */
-  #image-container{
-    position:relative; width:100%; background:var(--card);
-    border:2px solid #ddd; border-radius: var(--radius); overflow:hidden; box-shadow: var(--shadow);
-    display:flex; align-items:center; justify-content:center; min-height: 360px;
-  }
-  #target-image{
-    max-width:100%; height:auto; display:block; touch-action: manipulation; user-select:none;
-  }
-  .placeholder{
-    text-align:center; color:#666; padding:18px;
-  }
-  /* Marcadores */
-  .marker{
-    position:absolute; width:22px; height:22px; border-radius:50%;
-    background:var(--accent); color:#fff; font-weight:700; font-size:12px;
-    display:flex; align-items:center; justify-content:center;
-    transform: translate(-50%, -50%);
-    border:1px solid #fff; box-shadow: 0 0 6px rgba(0,0,0,.35);
-    user-select: none; touch-action: none; /* importante para drag no touch */
-  }
-  /* Legendas */
-  aside{
-    background:var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding:12px;
-  }
-  .legend-list{ max-height: 520px; overflow:auto; margin-top:8px; }
-  .legend-item{
-    display:flex; gap:8px; align-items:center; border:1px solid #eee; border-radius:10px;
-    padding:8px; margin-bottom:8px; background:#fafafa;
-  }
-  .badge{
-    width:22px; height:22px; border-radius:50%; background:var(--accent); color:#fff;
-    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;
-    flex: 0 0 22px;
-  }
-  .legend-item input{
-    flex:1; padding:6px 8px; border-radius:8px; border:1px solid #ddd; font-size:14px;
-    background:#fff;
-  }
-  .legend-item button{
-    border:none; background:#eee; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:13px;
-  }
-  .legend-item button:hover{ background:#e3e3e3; }
-  .hint{ font-size:12px; color:#666; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>R.A.F.A – Recursos Avançados para Funcionalidade e Acessibilidade</title>
+  <style>
+    /* ===== VARIÁVEIS ===== */
+    :root {
+      --bg-gradient: linear-gradient(135deg, #7F7FD5, #86A8E7, #91EAE4);
+      --text-color: #333;
+      --key-bg: #fff;
+      --key-border: #4A90E2;
+      --key-size: 80px;
+      --key-width: 120px;
+      --special-key-width: 180px;
+      --img-button-size: 200px;
+      --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      --transition-speed: 0.3s;
+      --sidebar-width: 250px;
+      --sidebar-bg: #fff;
+      --sidebar-border: #ccc;
+      --sidebar-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      --highlight-color: #FF6600;
+    }
+    body.dark {
+      --bg-gradient: linear-gradient(135deg, #1C1C1C, #3C3C3C);
+      --text-color: #ddd;
+      --key-bg: #555;
+      --key-border: #aaa;
+      --sidebar-bg: #333;
+      --sidebar-border: #555;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: var(--font-family);
+      background: var(--bg-gradient);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: row;
+      min-height: 100vh;
+      transition: background var(--transition-speed);
+      overflow-x: hidden;
+    }
+    /* ===== SIDEBAR ===== */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: var(--sidebar-width);
+      height: 100%;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--sidebar-border);
+      box-shadow: var(--sidebar-shadow);
+      transform: translateX(-100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 1000;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+    .sidebar .close-btn {
+      font-size: 1.5em;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: var(--text-color);
+      margin-bottom: 20px;
+    }
+    .sidebar .control-group {
+      margin-bottom: 15px;
+    }
+    .sidebar select,
+    .sidebar button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      font-size: 1em;
+      border-radius: 6px;
+      border: 1px solid var(--key-border);
+      background: var(--key-bg);
+      cursor: pointer;
+      transition: background var(--transition-speed), transform var(--transition-speed);
+    }
+    .sidebar button:hover,
+    .sidebar select:hover {
+      background: #e0e0e0;
+    }
+    /* ===== BOTÃO HAMBURGER ===== */
+    .open-sidebar-btn {
+      position: fixed;
+      left: 10px;
+      top: 10px;
+      font-size: 2em;
+      background: var(--key-bg);
+      border: 2px solid var(--key-border);
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 1100;
+      padding: 5px 10px;
+      transition: transform 0.2s;
+    }
+    .open-sidebar-btn:hover {
+      transform: scale(1.1);
+    }
+    /* ===== MAIN CONTENT ===== */
+    .main-content {
+      margin-left: 0;
+      width: 100%;
+      padding: 20px;
+      transition: margin-left var(--transition-speed);
+    }
+    .sidebar.open ~ .main-content {
+      margin-left: var(--sidebar-width);
+    }
+    /* ===== DISPLAY E SUGESTÕES ===== */
+    .display-container {
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto 15px;
+      text-align: center;
+      word-wrap: break-word;
+    }
+    .display {
+      width: 100%;
+      padding: 15px;
+      font-size: 1.8em;
+      border: none;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+      outline: none;
+      transition: box-shadow var(--transition-speed);
+      word-wrap: break-word;
+      background: #fff;
+      color: #333;
+    }
+    .display:focus {
+      box-shadow: 0 0 0 3px rgba(74,144,226,0.4);
+    }
+    .suggestions {
+      margin-top: 5px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .suggestion {
+      background: var(--key-bg);
+      border: 1px solid var(--key-border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: background var(--transition-speed), transform var(--transition-speed);
+      font-size: 1.3em;
+    }
+    .suggestion:hover {
+      background: #f0f0f0;
+      transform: translateY(-2px);
+    }
+    /* ===== TECLADO ===== */
+    .keyboard-container {
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto 20px;
+      background: rgba(255,255,255,0.8);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    }
+    .key-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .key {
+      width: var(--key-width);
+      height: var(--key-size);
+      background: var(--key-bg);
+      border: 2px solid var(--key-border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background var(--transition-speed), transform 0.1s;
+      user-select: none;
+      font-size: 2em;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .key:active {
+      transform: scale(0.95);
+      background: #f9f9f9;
+    }
+    .special-key {
+      width: var(--special-key-width);
+      height: var(--key-size);
+      font-size: 1.5em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .numeric-keyboard {
+      margin-top: 15px;
+    }
+    /* ===== BOTÃO LER ===== */
+    .read-aloud-button {
+      width: 100%;
+      max-width: 800px;
+      margin: 20px auto;
+      text-align: center;
+    }
+    #readAloudBtn {
+      padding: 16px 28px;
+      font-size: 1.7em;
+      font-weight: bold;
+      background: var(--highlight-color);
+      border: 3px solid darkorange;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+      transition: background 0.3s, transform 0.1s;
+      color: #fff;
+    }
+    #readAloudBtn:hover {
+      background: darkorange;
+      transform: scale(1.05);
+    }
+    /* ===== CATEGORIAS ===== */
+    .img-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .img-button {
+      width: var(--img-button-size);
+      height: var(--img-button-size);
+      cursor: pointer;
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+      border: 2px solid var(--key-border);
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      object-fit: cover;
+    }
+    .img-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    }
+    .back-button {
+      padding: 10px 20px;
+      font-size: 1.2em;
+      background: #FF6666;
+      border: 2px solid #CC0000;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .back-button:hover {
+      transform: scale(1.05);
+    }
+    /* ===== OVERLAY MAPA CORPORAL ===== */
+    .body-map-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(255,255,255,0.97);
+      z-index: 2000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+      padding-top: 60px;
+      animation: fadeIn 0.5s;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .body-map-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      background: #fff;
+      padding: 10px 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 2100;
+    }
+    .body-map-header h2 {
+      margin: 0;
+      font-size: 1.5em;
+      text-align: center;
+      flex-grow: 1;
+    }
+    .body-map-header button {
+      padding: 8px 16px;
+      font-size: 1em;
+      background: #FF6666;
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .body-map-header button:hover {
+      background: #e05555;
+    }
+    .body-image-container {
+      position: relative;
+      margin: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .body-image {
+      width: 300px;
+      height: 600px;
+      object-fit: cover;
+      display: block;
+      border-radius: 8px;
+    }
+    .marker {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: red;
+      border: 2px solid white;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .footer {
+      width: 100%;
+      text-align: center;
+      padding: 15px 10px;
+      background-color: rgba(0, 0, 0, 0.05);
+      color: #333;
+      font-size: 0.9em;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      margin-top: 40px;
+      font-style: italic;
+    }
+    /* ===== CURSOR OCULAR ===== */
+    #eyeCursor {
+      position: fixed;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: rgba(255, 0, 0, 0.35);
+      border: 3px solid red;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      display: none;
+    }
+
+    /* ===== OVERLAY DE CALIBRAÇÃO ===== */
+    #calibrationOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9998;
+      font-size: 2em;
+      font-weight: bold;
+      text-align: center;
+      pointer-events: none;
+    }
+    #calibrationOverlay span {
+      background: rgba(0,0,0,0.7);
+      padding: 20px 40px;
+      border-radius: 12px;
+    }
+  </style>
 </head>
 <body>
+  <!-- BOTÃO HAMBURGER -->
+  <button id="openSidebarBtn" class="open-sidebar-btn">&#9776;</button>
 
-  <h2>Botox Markers App</h2>
+  <!-- SIDEBAR -->
+  <div id="sidebar" class="sidebar">
+    <button id="closeSidebarBtn" class="close-btn">&times;</button>
+    <button onclick="logout()">Fazer Logout</button>
 
-  <div class="controls">
-    <label for="image-input" style="display:inline-block;">
-      <input type="file" accept="image/*" id="image-input" style="display:none">
-      <span class="controls buttonlike" style="padding:8px 12px;border-radius:8px;border:1px solid #cfcfcf;background:#fff;cursor:pointer;">
-        Carregar foto (obrigatório)
-      </span>
-    </label>
-    <button id="exportBtn" class="primary">Exportar PDF</button>
-  </div>
-
-  <div class="layout">
-    <div id="image-container">
-      <div class="placeholder">Carregue uma imagem para começar</div>
-      <img id="target-image" alt="" />
-      <!-- marcadores aparecem aqui, posicionados por porcentagem -->
+    <div class="control-group">
+      <label for="layoutSelect">Layout do Teclado:</label>
+      <select id="layoutSelect">
+        <option value="QWERTY">QWERTY</option>
+      </select>
     </div>
 
-    <aside>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <strong>Legendas</strong>
-        <span class="hint">Toque/click na imagem para adicionar • Arraste pontos para ajustar</span>
-      </div>
-      <div class="legend-list" id="legend-list"></div>
-    </aside>
+    <div class="control-group">
+      <label for="targetLanguage">Idioma (tradução):</label>
+      <select id="targetLanguage">
+        <option value="pt">Português</option>
+        <option value="en">English</option>
+        <option value="es">Español</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <button id="themeToggle">Alternar Tema</button>
+    </div>
+    <div class="control-group">
+      <button id="copyBtn">Copiar</button>
+      <button id="shareBtn">Compartilhar</button>
+    </div>
+    <div class="control-group">
+      <button id="voiceBtn">Reconhecimento de Voz</button>
+    </div>
+    <div class="control-group">
+      <button id="incSizeBtn">Aumentar Botões</button>
+      <button id="decSizeBtn">Diminuir Botões</button>
+    </div>
+
+    <!-- CONTROLES EYE TRACKING -->
+    <div class="control-group" id="eyeTrackingControls">
+      <label><strong>Controle Ocular</strong></label>
+      <button id="startEyeBtn">Iniciar Olhar</button>
+      <button id="stopEyeBtn">Parar Olhar</button>
+      <button id="calibrateEyeBtn">Calibrar</button>
+      <label for="dwellSlider">Tempo de clique (ms): <span id="dwellValue">1200</span></label>
+      <input type="range" id="dwellSlider" min="500" max="3000" step="100" value="1200">
+    </div>
   </div>
 
-  <!-- libs -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+    <div class="display-container">
+      <input type="text" id="display" class="display" placeholder="Sua frase aparecerá aqui..." readonly>
+      <div class="suggestions" id="suggestions"></div>
+    </div>
 
+    <div class="keyboard-container" id="keyboardContainer">
+      <div id="alphabetKeyboard"></div>
+      <div id="numericKeyboard" class="numeric-keyboard"></div>
+      <div class="key-row">
+        <div class="key special-key" id="backspaceKey">Back</div>
+        <div class="key special-key" id="spaceKey">Espaço</div>
+        <div class="key special-key" id="clearKey">Limpar</div>
+      </div>
+    </div>
+
+    <div class="read-aloud-button">
+      <button id="readAloudBtn">Ler em Voz Alta</button>
+    </div>
+
+    <h2 style="text-align: center;">Menu de Categorias</h2>
+    <div class="img-container" id="categoryContainer">
+      <img src="https://8upload.com/preview/67deab9da55c3/Call_doctor__7_.jpg" alt="Respostas" class="img-button" data-category="respostas">
+      <img src="https://8upload.com/preview/67deeb4b67214/Call_doctor__15_.jpg" alt="Perguntas" class="img-button" data-category="perguntas">
+      <img src="https://8upload.com/preview/67e4b4ce7c20c/Call_doctor__14_.jpg" alt="tabela" class="img-button" data-category="tabela"> 
+      <img src="https://8upload.com/preview/67deaa0417e7c/Call_doctor__6_.jpg" alt="Chamar" class="img-button" data-category="chamar">
+      <img src="https://8upload.com/preview/67e4b94b4d1ed/Call_doctor__21_.jpg" alt="Dor" class="img-button" data-category="dor">
+      <img src="https://8upload.com/preview/67deac3a63ee6/Call_doctor__8_.jpg" alt="Mobilidade" class="img-button" data-category="mobilidade">
+      <img src="https://8upload.com/preview/67deadf6a9bb9/Call_doctor__9_.jpg" alt="Comida" class="img-button" data-category="comida">
+      <img src="https://8upload.com/preview/67e4b7724d679/Call_doctor__20_.jpg" alt="Corpo" class="img-button" data-category="corpo">
+    </div>
+    <div id="imgContainer" class="img-container"></div>
+  </div>
+
+  <!-- OVERLAY MAPA CORPORAL -->
+  <div id="bodyMapSection" class="body-map-container" style="display: none;">
+    <div class="body-map-header">
+      <h2>Mapeamento da Dor</h2>
+      <button id="closeBodyMapBtn">Fechar</button>
+    </div>
+    <div class="body-image-container">
+      <img id="frontBody" src="https://8upload.com/preview/67deb36898536/38.jpg" alt="Corpo - Frente" class="body-image">
+    </div>
+    <div class="body-image-container">
+      <img id="backBody" src="https://8upload.com/preview/67deb47983de9/40.jpg" alt="Corpo - Costas" class="body-image">
+    </div>
+  </div>
+
+  <!-- OVERLAY DE CALIBRAÇÃO -->
+  <div id="calibrationOverlay"><span>Calibrando... Siga os pontos com o olhar</span></div>
+
+  <!-- ÁUDIO DE FEEDBACK -->
+  <audio id="beepSound" src="https://www.soundjay.com/button/beep-07.wav"></audio>
+
+  <!-- CURSOR OCULAR -->
+  <div id="eyeCursor"></div>
+
+  <!-- ============================================================ -->
+  <!-- SCRIPTS PRINCIPAIS (TUDO FUNCIONANDO)                        -->
+  <!-- ============================================================ -->
   <script>
-    const imageInput   = document.getElementById('image-input');
-    const image        = document.getElementById('target-image');
-    const container    = document.getElementById('image-container');
-    const legendList   = document.getElementById('legend-list');
-    const exportBtn    = document.getElementById('exportBtn');
+    // ==========================================
+    // ELEMENTOS GLOBAIS
+    // ==========================================
+    const displayField = document.getElementById('display');
+    const alphabetKeyboard = document.getElementById('alphabetKeyboard');
+    const numericKeyboard = document.getElementById('numericKeyboard');
+    const layoutSelect = document.getElementById('layoutSelect');
+    const targetLanguageSelect = document.getElementById('targetLanguage');
+    const suggestionsDiv = document.getElementById('suggestions');
+    const beepSound = document.getElementById('beepSound');
+    const themeToggle = document.getElementById('themeToggle');
+    const copyBtn = document.getElementById('copyBtn');
+    const shareBtn = document.getElementById('shareBtn');
+    const voiceBtn = document.getElementById('voiceBtn');
+    const readAloudBtn = document.getElementById('readAloudBtn');
+    const incSizeBtn = document.getElementById('incSizeBtn');
+    const decSizeBtn = document.getElementById('decSizeBtn');
+    const sidebar = document.getElementById('sidebar');
+    const openSidebarBtn = document.getElementById('openSidebarBtn');
+    const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+    const categoryContainer = document.getElementById('categoryContainer');
+    const imgContainer = document.getElementById('imgContainer');
+    const bodyMapSection = document.getElementById('bodyMapSection');
+    const frontBody = document.getElementById('frontBody');
+    const backBody = document.getElementById('backBody');
+    const closeBodyMapBtn = document.getElementById('closeBodyMapBtn');
+    const calibrationOverlay = document.getElementById('calibrationOverlay');
 
-    let markers = []; // {number, xPct, yPct, text, el}
-    let counter = 0;
-    let imageLoaded = false;
+    // ==========================================
+    // LAYOUTS DO TECLADO
+    // ==========================================
+    const layouts = {
+      "QWERTY": [
+        ["Q","W","E","R","T","Y","U","I","O","P"],
+        ["A","S","D","F","G","H","J","K","L"],
+        ["Z","X","C","V","B","N","M"]
+      ],
+      "AZERTY": [
+        ["A","Z","E","R","T","Y","U","I","O","P"],
+        ["Q","S","D","F","G","H","J","K","L","M"],
+        ["W","X","C","V","B","N"]
+      ],
+      "NUMERIC": [
+        ["1","2","3"],
+        ["4","5","6"],
+        ["7","8","9"],
+        ["0"]
+      ]
+    };
 
-    // Upload obrigatório
-    imageInput.addEventListener('change', (e) => {
-      const f = e.target.files[0];
-      if(!f) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        image.src = ev.target.result;
-        image.onload = () => {
-          imageLoaded = true;
-          // limpar qualquer estado anterior
-          markers = [];
-          counter = 0;
-          legendList.innerHTML = '';
-          Array.from(container.querySelectorAll('.marker')).forEach(m => m.remove());
-          container.querySelector('.placeholder')?.remove();
+    // ==========================================
+    // SUGESTÕES DE PALAVRAS
+    // ==========================================
+    const wordSuggestions = ["Eu", "quero", "comer", "beber", "dormir", "brincar", "jogar", "aprender", "correr", "obrigado"];
+
+    // ==========================================
+    // CATEGORIAS (IMAGENS E FRASES)
+    // ==========================================
+    const categories = {
+      chamar: [
+        { src: "https://8upload.com/preview/67e140be68b8e/Call_doctor__1_.jpg", alt: "Chamar o médico", phrase: "Chamar o médico" },
+        { src: "https://8upload.com/preview/67e1413d1fb19/Call_doctor__2_.jpg", alt: "Chamar o fisioterapeuta", phrase: "Chamar o fisioterapeuta" },
+        { src: "https://8upload.com/preview/68e9418030fa7/Call_doctor__10_.jpg", alt: "Chamar a nutricionista", phrase: "Chamar a nutricionista" },
+        { src: "https://8upload.com/preview/68e941cf5dd0f/Call_doctor__11_.jpg", alt: "Chamar a fonoaudióloga", phrase: "Chamar a fonoaudióloga" },
+        { src: "https://8upload.com/preview/67e1410f2b2a5/nurse.jpg", alt: "Chamar Enfermagem", phrase: "Chamar Enfermagem" },
+        { src: "https://8upload.com/preview/67e456016bb90/Call_doctor__12_.jpg", alt: "Falar com minha família", phrase: "Falar com minha família" }
+      ],
+      perguntas: [
+        { src: "https://8upload.com/preview/67deec028dd00/Call_doctor__16_.jpg", alt: "Onde", phrase: "Onde eu estou?" },
+        { src: "https://8upload.com/preview/67deec64d8746/Call_doctor__17_.jpg", alt: "Dia", phrase: "Que dia é hoje?" },
+        { src: "https://8upload.com/preview/67deec9827c31/Call_doctor__18_.jpg", alt: "Acontecendo", phrase: "O que está acontecendo?" },
+        { src: "https://8upload.com/preview/67deecb9eb1f8/Call_doctor__19_.jpg", alt: "Como", phrase: "Como eu estou?" },
+        { src: "https://8upload.com/preview/67deecd532eef/Call_doctor__20_.jpg", alt: "Por que", phrase: "Por que estou aqui?" }
+      ],
+      respostas: [
+        { src: "https://8upload.com/preview/67e4563bb0623/Call_doctor__13_.jpg", alt: "Não", phrase: "Não" },
+        { src: "https://8upload.com/preview/67e1407e07c58/Call_doctor.jpg", alt: "Sim", phrase: "Sim" },
+        { src: "https://8upload.com/preview/67e4566d8bbda/Call_doctor__14_.jpg", alt: "Talvez", phrase: "Talvez eu não sei" }
+      ],
+      dor: [
+        { src: "https://8upload.com/preview/67e4ba43751ae/Call_doctor__22_.jpg", alt: "Óculos", phrase: "Eu quero meus óculos" },
+        { src: "https://8upload.com/preview/67e4ba96a32ed/Call_doctor__23_.jpg", alt: "Auditivo", phrase: "Eu quero meu aparelho auditivo" },
+        { src: "https://8upload.com/preview/67e4bac6a9112/Call_doctor__24_.jpg", alt: "Ligar", phrase: "Eu quero que ligue a luz" },
+        { src: "https://8upload.com/preview/67e4bb0487497/Call_doctor__25_.jpg", alt: "Apague", phrase: "Eu quero que apague a luz" },
+        { src: "https://cdn.pixabay.com/photo/2025/03/20/19/56/ventilation-9483703__340.jpg", alt: "Eu quero ser aspirado", phrase: "Eu quero ser aspirado" },
+        { src: "https://8upload.com/preview/67e141b87b1ed/Call_doctor__4_.jpg", alt: "fralda", phrase: "Eu quero que troque a fralda" },
+        { src: "https://8upload.com/preview/68e93e8a33f04/Call_doctor__5_.jpg", alt: "respiração", phrase: "Eu quero que melhore a respiração" },
+        { src: "https://8upload.com/preview/68e93f03321a1/Call_doctor__6_.jpg", alt: "Estou com frio", phrase: "Estou com frio" },
+        { src: "https://8upload.com/preview/68e93f4b62c8f/Call_doctor__7_.jpg", alt: "Estou com calor", phrase: "Estou com calor" },
+        { src: "https://8upload.com/preview/67e141f7d4e0c/Call_doctor__5_.jpg", alt: "Medo", phrase: "Estou com medo" }
+      ],
+      tabela: [
+        { src: "https://8upload.com/preview/67e4b5129a8e0/Call_doctor__15_.jpg", alt: "Televisão", phrase: "Quero assistir televisão" },
+        { src: "https://8upload.com/preview/67e4b54a5159d/Call_doctor__16_.jpg", alt: "Rádio", phrase: "Quero ouvir rádio" },
+        { src: "https://8upload.com/preview/67e4b596ce836/Call_doctor__17_.jpg", alt: "Livro", phrase: "Quero ler um livro" },
+        { src: "https://8upload.com/preview/67e4b5d5d4bb7/Call_doctor__18_.jpg", alt: "Palavra", phrase: "Quero fazer palavra cruzada" }
+      ],
+      corpo: [
+        { src: "https://8upload.com/preview/67e4569a1ea22/Call_doctor__15_.jpg", alt: "Dor de cabeça", phrase: "Estou com dor de cabeça" },
+        { src: "https://8upload.com/preview/67e456bbe3ae1/Call_doctor__16_.jpg", alt: "Dor nas costas", phrase: "Estou com dor nas costas" },
+        { src: "https://8upload.com/preview/67e456f8db4ae/Call_doctor.png", alt: "Dor na barriga", phrase: "Estou com dor na barriga" },
+        { src: "https://8upload.com/preview/67e45743d2db1/Call_doctor__17_.jpg", alt: "Dor no peito", phrase: "Estou com dor no peito" },
+        { src: "https://8upload.com/preview/67e1417339df6/Call_doctor__3_.jpg", alt: "Falta de ar", phrase: "Estou com falta de ar" },
+        { src: "https://8upload.com/preview/67def225e099e/Call_doctor__24_.jpg", alt: "Agulha", phrase: "Sinto dor em agulhada" },
+        { src: "https://8upload.com/preview/67def27fa973e/Call_doctor__26_.jpg", alt: "Queimação", phrase: "Sinto dor em queimação" },
+        { src: "https://8upload.com/preview/67deb953ba218/Call_doctor__14_.jpg", alt: "Dor", phrase: "Está doendo" },
+        { src: "https://8upload.com/preview/67deb90a0190f/Call_doctor__13_.jpg", alt: "Coçar", phrase: "Está coçando" },
+        { src: "https://8upload.com/preview/67deb36898536/38.jpg", alt: "Cabeça", phrase: "Cabeça" },
+        { src: "https://8upload.com/preview/67deb3cb78a50/39.jpg", alt: "Tronco", phrase: "Tronco" },
+        { src: "https://8upload.com/preview/67deb47983de9/40.jpg", alt: "Costas", phrase: "Costas" },
+        { src: "https://8upload.com/preview/67deb56d9b295/43.jpg", alt: "Pernas", phrase: "Pernas" },
+        { src: "https://8upload.com/preview/67deb5139f957/42.jpg", alt: "Quadril", phrase: "Quadril" },
+        { src: "https://8upload.com/preview/67deb612268d1/44.jpg", alt: "Pés", phrase: "Pés" },
+        { src: "https://8upload.com/preview/67deb68a974d0/Call_doctor__12_.jpg", alt: "Mãos", phrase: "Mãos" },
+        { src: "https://8upload.com/preview/67deb4f4d56e7/41.jpg", alt: "Braços", phrase: "Braços" }
+      ],
+      comida: [
+        { src: "https://8upload.com/preview/67e455ce3f996/Call_doctor__11_.jpg", alt: "Estou com fome", phrase: "Estou com fome" },
+        { src: "https://8upload.com/preview/67e455372483b/Call_doctor__10_.jpg", alt: "Estou com sede", phrase: "Estou com sede" },
+        { src: "https://8upload.com/preview/67deaeeb6b03d/Call_doctor__11_.jpg", alt: "Açúcar", phrase: "Precisa de açúcar" },
+        { src: "https://8upload.com/preview/67deaeab93941/Call_doctor__10_.jpg", alt: "Sal", phrase: "Precisa de sal" },
+        { src: "https://8upload.com/preview/67e4b11e34c6f/Call_doctor__11_.jpg", alt: "Talheres", phrase: "Eu preciso de talheres" },
+        { src: "https://8upload.com/preview/67e4b0c9a0225/Call_doctor__10_.jpg", alt: "Está frio", phrase: "Está frio" },
+        { src: "https://8upload.com/preview/67e4b085cb91c/Call_doctor__9_.jpg", alt: "Está quente", phrase: "Está quente" },
+        { src: "https://8upload.com/preview/67e4b047753bf/Call_doctor__8_.jpg", alt: "Não gostei", phrase: "Não gostei" },
+        { src: "https://8upload.com/preview/67e4b01d318db/Call_doctor__7_.jpg", alt: "Gostei", phrase: "Gostei" },
+        { src: "https://8upload.com/preview/67e4afe219e49/Call_doctor__6_.jpg", alt: "Água", phrase: "Quero beber suco" },
+        { src: "https://8upload.com/preview/67e4b1d0c38f6/Call_doctor__12_.jpg", alt: "Leite", phrase: "Quero beber leite" },
+        { src: "https://8upload.com/preview/67e4b219152a8/Call_doctor__13_.jpg", alt: "Café", phrase: "Quero beber café" },
+        { src: "https://8upload.com/preview/67e4afaea0ca2/Call_doctor__5_.jpg", alt: "Água", phrase: "Quero beber água" },
+        { src: "https://8upload.com/preview/67e4af67b910b/Call_doctor__4_.jpg", alt: "Lanche", phrase: "Quero lanchar" },
+        { src: "https://8upload.com/preview/67e4af2a6a7a1/Call_doctor__3_.jpg", alt: "vegetais", phrase: "Quero comer vegetais" },
+        { src: "https://8upload.com/preview/67e4aee3e5dbb/Call_doctor__2_.jpg", alt: "frutas", phrase: "Quero comer frutas" },
+        { src: "https://8upload.com/preview/67e4ae8d48056/Call_doctor__1_.jpg", alt: "janta", phrase: "Quero almoçar ou jantar" },
+        { src: "https://8upload.com/preview/67e4ae4161f6a/Call_doctor.jpg", alt: "Café", phrase: "Quero café da manhã" }
+      ],
+      mobilidade: [
+        { src: "https://8upload.com/preview/68e93dcbea1d1/Call_doctor__3_.jpg", alt: "banho", phrase: "Eu quero tomar banho" },
+        { src: "https://8upload.com/preview/67e16f44c0e11/Call_doctor__6_.jpg", alt: "direita", phrase: "Eu quero virar para a direita" },
+        { src: "https://8upload.com/preview/67e16f9271462/Call_doctor__7_.jpg", alt: "esquerda", phrase: "Eu quero virar para a esquerda" },
+        { src: "https://8upload.com/preview/67e17033e5add/Call_doctor__8_.jpg", alt: "cabeceira", phrase: "Eu quero que eleve a cabeceira" },
+        { src: "https://8upload.com/preview/67e170989d81a/Call_doctor__9_.jpg", alt: "abaixar", phrase: "Eu quero que abaixe a cabeceira" },
+        { src: "https://cdn.pixabay.com/photo/2025/03/20/19/56/bathroom-9483698__340.jpg", alt: "banheiro", phrase: "Eu quero ir ao banheiro" },
+        { src: "https://8upload.com/preview/68e93fc31e4e0/Call_doctor__8_.jpg", alt: "Eu quero sentar", phrase: "Eu quero sentar" },
+        { src: "https://8upload.com/preview/68e940059d594/Call_doctor__9_.jpg", alt: "Eu quero andar", phrase: "Eu quero andar" }
+      ]
+    };
+
+    // ==========================================
+    // FUNÇÕES DO TECLADO E SUGESTÕES
+    // ==========================================
+    function renderAlphabetKeyboard() {
+      alphabetKeyboard.innerHTML = "";
+      const rows = layouts["QWERTY"];
+      if (!rows) return;
+      rows.forEach(row => {
+        const rowDiv = document.createElement('div');
+        rowDiv.classList.add('key-row');
+        row.forEach(key => {
+          const btn = document.createElement('div');
+          btn.classList.add('key');
+          btn.textContent = key;
+          btn.addEventListener('click', () => {
+            playFeedback();
+            displayField.value += key;
+            updateSuggestions();
+          });
+          rowDiv.appendChild(btn);
+        });
+        alphabetKeyboard.appendChild(rowDiv);
+      });
+    }
+
+    function renderNumericKeyboard() {
+      numericKeyboard.innerHTML = "";
+      const rows = layouts["NUMERIC"];
+      if (!rows) return;
+      rows.forEach(row => {
+        const rowDiv = document.createElement('div');
+        rowDiv.classList.add('key-row');
+        row.forEach(key => {
+          const btn = document.createElement('div');
+          btn.classList.add('key');
+          btn.textContent = key;
+          btn.addEventListener('click', () => {
+            playFeedback();
+            displayField.value += key;
+            updateSuggestions();
+          });
+          rowDiv.appendChild(btn);
+        });
+        numericKeyboard.appendChild(rowDiv);
+      });
+    }
+
+    function renderKeyboard() {
+      renderAlphabetKeyboard();
+      renderNumericKeyboard();
+    }
+    renderKeyboard();
+
+    // Teclas especiais
+    document.getElementById('backspaceKey')?.addEventListener('click', () => {
+      playFeedback();
+      displayField.value = displayField.value.slice(0, -1);
+      updateSuggestions();
+    });
+    document.getElementById('spaceKey')?.addEventListener('click', () => {
+      playFeedback();
+      displayField.value += ' ';
+      updateSuggestions();
+    });
+    document.getElementById('clearKey')?.addEventListener('click', () => {
+      playFeedback();
+      displayField.value = '';
+      updateSuggestions();
+    });
+
+    function playFeedback() {
+      beepSound.currentTime = 0;
+      beepSound.play().catch(() => {});
+    }
+
+    function updateSuggestions() {
+      suggestionsDiv.innerHTML = "";
+      const words = displayField.value.split(" ");
+      const lastFragment = words[words.length - 1].toLowerCase();
+      if (!lastFragment) return;
+      const matches = wordSuggestions.filter(word => word.toLowerCase().startsWith(lastFragment));
+      matches.forEach(match => {
+        const sug = document.createElement('div');
+        sug.classList.add('suggestion');
+        sug.textContent = match;
+        sug.addEventListener('click', () => {
+          words[words.length - 1] = match;
+          displayField.value = words.join(" ") + " ";
+          suggestionsDiv.innerHTML = "";
+        });
+        suggestionsDiv.appendChild(sug);
+      });
+    }
+
+    function speakText() {
+      const text = displayField.value;
+      if (text.trim() !== "") {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "pt-BR";
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    function translateText(text, targetLang) {
+      const sourceLang = "pt";
+      if (sourceLang === targetLang) return Promise.resolve(text);
+      return fetch('https://libretranslate.de/translate', {
+        method: 'POST',
+        body: JSON.stringify({ q: text, source: sourceLang, target: targetLang, format: "text" }),
+        headers: { "Content-Type": "application/json" }
+      })
+      .then(response => response.json())
+      .then(data => data.translatedText);
+    }
+
+    // ==========================================
+    // EVENTOS DA SIDEBAR E CONTROLES
+    // ==========================================
+    layoutSelect.addEventListener('change', renderKeyboard);
+    themeToggle.addEventListener('click', () => document.body.classList.toggle('dark'));
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(displayField.value);
+        alert("Texto copiado!");
+      } catch (err) {
+        alert("Erro ao copiar o texto.");
+      }
+    });
+
+    shareBtn.addEventListener('click', async () => {
+      if (navigator.share) {
+        try {
+          await navigator.share({ text: displayField.value });
+        } catch (err) {
+          alert("Compartilhamento cancelado ou falhou.");
         }
-      };
-      reader.readAsDataURL(f);
+      } else {
+        alert("Web Share API não suportada neste dispositivo.");
+      }
     });
 
-    // Adicionar marcador (somente se imagem estiver carregada)
-    image.addEventListener('click', (e) => {
-      if(!imageLoaded) return;
-
-      const rect = container.getBoundingClientRect(); // usar container como base
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      // Converter para porcentagem para manter posição em redimensionamentos
-      const xPct = (x / rect.width) * 100;
-      const yPct = (y / rect.height) * 100;
-
-      addMarkerAt(xPct, yPct);
-    });
-
-    function addMarkerAt(xPct, yPct){
-      counter++;
-      const el = document.createElement('div');
-      el.className = 'marker';
-      el.textContent = counter;
-      el.dataset.number = counter;
-      setMarkerPosition(el, xPct, yPct);
-      container.appendChild(el);
-
-      const marker = { number: counter, xPct, yPct, text: '', el };
-      markers.push(marker);
-
-      // Tornar arrastável (Pointer Events)
-      makeDraggable(el, marker);
-
-      // Criar item de legenda com botão de excluir
-      const item = document.createElement('div');
-      item.className = 'legend-item';
-      item.dataset.number = counter;
-      item.innerHTML = `
-        <div class="badge">${counter}</div>
-        <input type="text" placeholder="Descrição da marcação #${counter}">
-        <button type="button" aria-label="Excluir #${counter}">Excluir</button>
-      `;
-      legendList.appendChild(item);
-
-      // Input legenda -> sincroniza texto
-      const input = item.querySelector('input');
-      input.addEventListener('input', () => {
-        const m = markers.find(mm => mm.number === marker.number);
-        if(m) m.text = input.value;
-      });
-
-      // Botão excluir -> remove ponto e legenda
-      item.querySelector('button').addEventListener('click', () => {
-        removeMarker(marker.number);
-      });
-    }
-
-    function setMarkerPosition(el, xPct, yPct){
-      // clamp leve para evitar sair da borda
-      const cx = Math.max(0, Math.min(100, xPct));
-      const cy = Math.max(0, Math.min(100, yPct));
-      el.style.left = cx + '%';
-      el.style.top  = cy + '%';
-    }
-
-    function removeMarker(number){
-      // remove DOM do marcador
-      const idx = markers.findIndex(m => m.number === number);
-      if(idx !== -1){
-        markers[idx].el.remove();
-        markers.splice(idx, 1);
-      }
-      // remove legenda
-      const li = legendList.querySelector(`.legend-item[data-number="${number}"]`);
-      li?.remove();
-    }
-
-    function makeDraggable(el, marker){
-      let dragging = false;
-      function onDown(e){
-        // habilitar captura de ponteiro (funciona para mouse e touch)
-        dragging = true;
-        el.setPointerCapture(e.pointerId);
-        e.preventDefault();
-      }
-      function onMove(e){
-        if(!dragging) return;
-        const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const xPct = (x / rect.width) * 100;
-        const yPct = (y / rect.height) * 100;
-        setMarkerPosition(el, xPct, yPct);
-        marker.xPct = Math.max(0, Math.min(100, xPct));
-        marker.yPct = Math.max(0, Math.min(100, yPct));
-      }
-      function onUp(e){
-        dragging = false;
-        try{ el.releasePointerCapture(e.pointerId); }catch(_){}
-      }
-      el.addEventListener('pointerdown', onDown);
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    }
-
-    // Ao redimensionar a janela (ou girar o dispositivo), como usamos %, os pontos permanecem corretos
-    window.addEventListener('resize', () => {
-      // nada específico necessário; posição é em %
-      // se quiser forçar reflow, poderíamos reaplicar setMarkerPosition:
-      markers.forEach(m => setMarkerPosition(m.el, m.xPct, m.yPct));
-    });
-
-    // Exportação em PDF
-    exportBtn.addEventListener('click', async () => {
-      if(!imageLoaded){
-        alert('Carregue uma imagem antes de exportar.');
+    voiceBtn.addEventListener('click', () => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("API de reconhecimento de voz não suportada.");
         return;
       }
-      const area = container;
-      // aumentar escala para melhor qualidade
-      const canvas = await html2canvas(area, { scale: Math.min(2, window.devicePixelRatio || 1), backgroundColor: null });
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF({ unit:'pt', format:'a4' });
-
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 40;
-
-      // dimensionar imagem (máx 60% da altura da página)
-      const imgW = canvas.width;
-      const imgH = canvas.height;
-      const ratio = Math.min((pageW - margin*2) / imgW, (pageH * 0.6) / imgH);
-      const drawW = imgW * ratio;
-      const drawH = imgH * ratio;
-
-      pdf.addImage(imgData, 'JPEG', margin, margin, drawW, drawH);
-
-      let y = margin + drawH + 20;
-      pdf.setFontSize(14);
-      pdf.text('Legendas', margin, y);
-      y += 10;
-      pdf.setFontSize(11);
-
-      const lines = markers
-        .sort((a,b)=>a.number-b.number)
-        .map(m => `#${m.number} — ${m.text || ''}`);
-
-      const maxWidth = pageW - margin*2;
-      for(const line of lines){
-        const wrapped = pdf.splitTextToSize(line, maxWidth);
-        for(const piece of wrapped){
-          if(y > pageH - margin){ pdf.addPage(); y = margin; }
-          pdf.text(piece, margin, y);
-          y += 14;
-        }
-      }
-
-      pdf.save('botox_marcacoes.pdf');
+      const recognition = new SpeechRecognition();
+      recognition.lang = "pt-BR";
+      recognition.start();
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        const targetLang = targetLanguageSelect.value;
+        translateText(transcript, targetLang).then(translated => {
+          displayField.value += translated + " ";
+          updateSuggestions();
+          speakText();
+        });
+      };
+      recognition.onerror = () => alert("Erro no reconhecimento de voz.");
     });
+
+    readAloudBtn.addEventListener('click', speakText);
+
+    openSidebarBtn.addEventListener('click', () => sidebar.classList.add('open'));
+    closeSidebarBtn.addEventListener('click', () => sidebar.classList.remove('open'));
+
+    // ==========================================
+    // CATEGORIAS
+    // ==========================================
+    function renderCategoryImages(category) {
+      categoryContainer.style.display = "none";
+      imgContainer.style.display = "flex";
+      imgContainer.innerHTML = "";
+      const backBtn = document.createElement('button');
+      backBtn.textContent = "Voltar ao Menu";
+      backBtn.classList.add('back-button');
+      backBtn.addEventListener('click', () => {
+        imgContainer.style.display = "none";
+        categoryContainer.style.display = "flex";
+      });
+      imgContainer.appendChild(backBtn);
+      categories[category].forEach(item => {
+        const img = document.createElement('img');
+        img.src = item.src;
+        img.alt = item.alt;
+        img.classList.add('img-button');
+        img.setAttribute('data-phrase', item.phrase);
+        img.addEventListener('click', () => {
+          playFeedback();
+          displayField.value = item.phrase;
+          updateSuggestions();
+          speakText();
+        });
+        imgContainer.appendChild(img);
+      });
+    }
+
+    document.querySelectorAll('#categoryContainer .img-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const category = btn.getAttribute('data-category');
+        if (category && categories[category]) renderCategoryImages(category);
+      });
+    });
+
+    // ==========================================
+    // MAPEAMENTO CORPORAL
+    // ==========================================
+    function openBodyMap() {
+      document.querySelector('.main-content').style.display = "none";
+      bodyMapSection.style.display = "flex";
+    }
+    function closeBodyMap() {
+      bodyMapSection.querySelectorAll('.marker').forEach(m => m.remove());
+      bodyMapSection.style.display = "none";
+      document.querySelector('.main-content').style.display = "block";
+    }
+    function addMarker(e) {
+      const container = e.currentTarget;
+      container.querySelectorAll('.marker').forEach(m => m.remove());
+      const marker = document.createElement('div');
+      marker.classList.add('marker');
+      const rect = container.getBoundingClientRect();
+      marker.style.left = (e.clientX - rect.left) + 'px';
+      marker.style.top = (e.clientY - rect.top) + 'px';
+      container.appendChild(marker);
+      const utterance = new SpeechSynthesisUtterance("Dói aqui");
+      utterance.lang = "pt-BR";
+      window.speechSynthesis.speak(utterance);
+    }
+    frontBody.addEventListener('click', addMarker);
+    backBody.addEventListener('click', addMarker);
+    closeBodyMapBtn.addEventListener('click', closeBodyMap);
+
+    // ==========================================
+    // AJUSTE DE TAMANHO DOS BOTÕES
+    // ==========================================
+    function updateButtonSizes(delta) {
+      const root = document.documentElement;
+      const get = (prop) => parseInt(getComputedStyle(root).getPropertyValue(prop));
+      let keySize = get('--key-size');
+      let keyWidth = get('--key-width');
+      let specialKeyWidth = get('--special-key-width');
+      let imgButtonSize = get('--img-button-size');
+      keySize = Math.max(60, keySize + delta);
+      keyWidth = Math.max(80, keyWidth + delta * 1.5);
+      specialKeyWidth = Math.max(100, specialKeyWidth + delta * 2);
+      imgButtonSize = Math.max(120, imgButtonSize + delta * 2);
+      root.style.setProperty('--key-size', keySize + "px");
+      root.style.setProperty('--key-width', keyWidth + "px");
+      root.style.setProperty('--special-key-width', specialKeyWidth + "px");
+      root.style.setProperty('--img-button-size', imgButtonSize + "px");
+    }
+    incSizeBtn.addEventListener('click', () => updateButtonSizes(10));
+    decSizeBtn.addEventListener('click', () => updateButtonSizes(-10));
+
+    // ==========================================
+    // LOGOUT (será sobrescrito pelo módulo Firebase)
+    // ==========================================
+    window.logout = function() {};
+
+    // ==========================================
+// EYE TRACKING (WebGazer) - CORRIGIDO
+// ==========================================
+(function() {
+  let eyeTrackingActive = false;
+  let dwellTimer = null;
+  let DWELL_TIME = 1200;
+  const eyeCursor = document.getElementById('eyeCursor');
+  let calibrationInProgress = false;
+
+  // Carrega o WebGazer via CDN
+  const script = document.createElement('script');
+  script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
+  script.onload = function() {
+    console.log('WebGazer carregado.');
+    // Se o usuário já tinha ativado, inicia automaticamente
+    if (localStorage.getItem('eyeTracking') === 'true') {
+      startEyeTracking(false);
+    }
+  };
+  document.head.appendChild(script);
+
+  // ---- Função que define o listener de gaze ----
+  function setupGazeListener() {
+    if (typeof webgazer === 'undefined') return;
+    // Remove listeners antigos para evitar duplicação
+    webgazer.setGazeListener(null);
+    webgazer.setGazeListener((data) => {
+      if (data && eyeTrackingActive) {
+        eyeCursor.style.left = data.x + 'px';
+        eyeCursor.style.top = data.y + 'px';
+        const element = document.elementFromPoint(data.x, data.y);
+        if (element) handleDwell(element);
+      }
+    });
+  }
+
+  // ---- Lógica de dwell (clique por tempo) ----
+  function handleDwell(element) {
+    if (!element) return;
+    // Ignora elementos que não devem ser clicados pelo olhar
+    if (element.id === 'eyeCursor' ||
+        element.closest('.sidebar') ||
+        element.closest('.body-map-container') ||
+        element.closest('.footer') ||
+        element.id === 'display' ||
+        element.closest('.suggestions')) {
+      clearTimeout(dwellTimer);
+      return;
+    }
+    if (dwellTimer && dwellTimer._element !== element) {
+      clearTimeout(dwellTimer);
+      dwellTimer = null;
+    }
+    if (dwellTimer) return;
+
+    dwellTimer = setTimeout(() => {
+      element.click();
+      playFeedback(); // função já existente no escopo global
+      // feedback visual breve
+      element.style.transition = 'background 0.1s';
+      element.style.background = 'rgba(255,255,0,0.5)';
+      setTimeout(() => { element.style.background = ''; }, 200);
+      dwellTimer = null;
+    }, DWELL_TIME);
+    dwellTimer._element = element;
+  }
+
+  // ---- Inicia o rastreamento (sem recalibrar) ----
+  function startEyeTracking(clearData = false) {
+    if (eyeTrackingActive) return;
+    if (typeof webgazer === 'undefined') {
+      alert('WebGazer ainda não carregou. Tente novamente.');
+      return;
+    }
+    if (calibrationInProgress) return;
+
+    if (clearData) {
+      webgazer.clearData();
+    }
+
+    // Configura o listener
+    setupGazeListener();
+
+    // Inicia o WebGazer (se já estiver rodando, apenas reativa)
+    webgazer.begin();
+
+    eyeTrackingActive = true;
+    eyeCursor.style.display = 'block';
+    localStorage.setItem('eyeTracking', 'true');
+    console.log('Eye tracking iniciado.');
+  }
+
+  // ---- Para o rastreamento ----
+  function stopEyeTracking() {
+    if (!eyeTrackingActive) return;
+    eyeTrackingActive = false;
+    eyeCursor.style.display = 'none';
+    if (typeof webgazer !== 'undefined') {
+      webgazer.end();
+      webgazer.setGazeListener(null);
+    }
+    clearTimeout(dwellTimer);
+    dwellTimer = null;
+    localStorage.setItem('eyeTracking', 'false');
+    console.log('Eye tracking parado.');
+  }
+
+  // ---- CALIBRAÇÃO (nova versão) ----
+  function calibrateEye() {
+    if (typeof webgazer === 'undefined') {
+      alert('WebGazer não carregado.');
+      return;
+    }
+    if (calibrationInProgress) return;
+    calibrationInProgress = true;
+
+    // 1. Para o tracking atual
+    if (eyeTrackingActive) {
+      webgazer.end();
+      eyeTrackingActive = false;
+      eyeCursor.style.display = 'none';
+    }
+
+    // 2. Limpa dados anteriores e remove listener antigo
+    webgazer.clearData();
+    webgazer.setGazeListener(null);
+
+    // 3. Mostra uma mensagem amigável (NÃO bloqueia a tela)
+    const msg = document.createElement('div');
+    msg.id = 'calibrationMessage';
+    msg.style.cssText = `
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.8); color: #fff; padding: 15px 30px;
+      border-radius: 8px; font-size: 1.2em; z-index: 9999;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+      pointer-events: none; text-align: center;
+      transition: opacity 0.3s;
+    `;
+    msg.textContent = '🔵 Calibração em andamento… Siga os pontos com os olhos.';
+    document.body.appendChild(msg);
+
+    // 4. Inicia a calibração (o WebGazer exibe os pontos automaticamente)
+    webgazer.begin();
+
+    // 5. Aguarda o evento de fim de calibração
+    webgazer.on('calibrationEnd', function() {
+      // Remove a mensagem
+      const msgEl = document.getElementById('calibrationMessage');
+      if (msgEl) msgEl.remove();
+
+      // Reconfigura o listener e reativa o tracking
+      setupGazeListener();
+      eyeTrackingActive = true;
+      eyeCursor.style.display = 'block';
+      localStorage.setItem('eyeTracking', 'true');
+      calibrationInProgress = false;
+
+      // Pequeno feedback sonoro
+      playFeedback();
+      console.log('Calibração concluída com sucesso.');
+    });
+
+    // Fallback: se a calibração não disparar em 30 segundos, força
+    setTimeout(() => {
+      if (calibrationInProgress) {
+        const msgEl = document.getElementById('calibrationMessage');
+        if (msgEl) msgEl.textContent = '⚠️ Calibração demorou muito. Tente novamente.';
+        setTimeout(() => {
+          if (msgEl) msgEl.remove();
+          calibrationInProgress = false;
+          // Reativa o tracking com os dados atuais (mesmo que ruins)
+          startEyeTracking(false);
+        }, 3000);
+      }
+    }, 30000);
+  }
+
+  // ---- EXPÕE FUNÇÕES GLOBALMENTE ----
+  window.startEyeTracking = function() { startEyeTracking(false); };
+  window.stopEyeTracking = stopEyeTracking;
+  window.calibrateEye = calibrateEye;
+
+  // ---- SLIDER DE DWELL ----
+  const dwellSlider = document.getElementById('dwellSlider');
+  const dwellValue = document.getElementById('dwellValue');
+  if (dwellSlider) {
+    dwellSlider.addEventListener('input', function() {
+      DWELL_TIME = parseInt(this.value);
+      if (dwellValue) dwellValue.textContent = DWELL_TIME;
+    });
+  }
+
+  // ---- BOTÕES DA SIDEBAR ----
+  document.getElementById('startEyeBtn')?.addEventListener('click', () => startEyeTracking(false));
+  document.getElementById('stopEyeBtn')?.addEventListener('click', stopEyeTracking);
+  document.getElementById('calibrateEyeBtn')?.addEventListener('click', calibrateEye);
+
+  // ---- DESLIGA AO SAIR ----
+  window.addEventListener('beforeunload', function() {
+    if (eyeTrackingActive && typeof webgazer !== 'undefined') {
+      webgazer.end();
+    }
+  });
+})();
   </script>
+
+ </script>
+
+  <footer class="footer">
+    <p>Rodrigo Cavalcante - CREFITO 2 / 242633-F - Fisioterapeuta - CER LEBLON</p>
+  </footer>
 </body>
 </html>
