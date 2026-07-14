@@ -929,27 +929,67 @@
     window.logout = function() {};
 
 // ==========================================
-// EYE TRACKING (WebGazer) - VERSÃO CORRIGIDA E FUNCIONAL
+// EYE TRACKING (WebGazer) - VERSÃO SUAVIZADA E COM TOLERÂNCIA
 // ==========================================
 (function() {
   let eyeTrackingActive = false;
   let dwellTimer = null;
-  let DWELL_TIME = 1200;
+  let DWELL_TIME = 1500; // aumentei para 1,5s (pode ajustar pelo slider)
   const eyeCursor = document.getElementById('eyeCursor');
   let calibrationInProgress = false;
   let webgazerLoaded = false;
-  let webgazerStarted = false; // controla se webgazer.begin() já foi chamado
+  let webgazerStarted = false;
 
-  const CLICKS_PER_DOT = 5; // cliques necessários em cada ponto de calibração
+  // ---- Suavização: histórico de posições ----
+  const HISTORY_SIZE = 5;
+  let history = [];
+  let smoothedX = 0, smoothedY = 0;
 
-  // ---- Confirma que o WebGazer (carregado via <script> estático no <head>) está pronto ----
-  // Não criamos mais a tag <script> dinamicamente: isso fazia o carregador interno do
-  // MediaPipe (usado pelo WebGazer) perder a referência de onde ele mesmo está hospedado
-  // e tentar buscar seus arquivos .wasm/.binarypb relativos à SUA página, causando 404.
+  // ---- Progresso do dwell (indicador visual) ----
+  // Cria um círculo de progresso dentro do cursor, se não existir
+  let progressCircle = document.createElement('div');
+  progressCircle.style.cssText = `
+    position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
+    margin: -20px 0 0 -20px; border-radius: 50%;
+    background: transparent; border: 4px solid rgba(255,0,0,0.3);
+    border-top-color: #ff0000; border-width: 4px;
+    box-sizing: border-box; pointer-events: none;
+    transition: transform 0.1s;
+  `;
+  // Usamos um pseudo-elemento ou um span para o preenchimento, mas aqui vamos usar um canvas ou
+  // apenas alterar a borda. Para simplicidade, vamos usar um <canvas> dentro do cursor.
+  // Ou usar um elemento com borda circular e alterar o ângulo via transform.
+  // Vou usar um canvas para desenhar o arco de progresso.
+  const canvas = document.createElement('canvas');
+  canvas.width = 40;
+  canvas.height = 40;
+  canvas.style.cssText = 'position: absolute; top: 50%; left: 50%; margin: -20px 0 0 -20px; pointer-events: none;';
+  eyeCursor.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  // Desenha o arco de progresso (0 a 2π)
+  function drawProgress(progress) { // progress 0..1
+    ctx.clearRect(0, 0, 40, 40);
+    const centerX = 20, centerY = 20, radius = 16, startAngle = -Math.PI/2;
+    const endAngle = startAngle + (progress * 2 * Math.PI);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    // Opcional: círculo de fundo
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255,0,0,0.2)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // ---- Inicializa o WebGazer ----
   function loadWebGazer() {
     return new Promise((resolve, reject) => {
       let tries = 0;
-      const maxTries = 100; // ~10s (100 x 100ms)
+      const maxTries = 100;
       const check = () => {
         if (typeof webgazer !== 'undefined') {
           webgazerLoaded = true;
@@ -958,7 +998,7 @@
         }
         tries++;
         if (tries >= maxTries) {
-          reject(new Error('WebGazer não carregou a tempo. Verifique sua conexão com a internet.'));
+          reject(new Error('WebGazer não carregou.'));
           return;
         }
         setTimeout(check, 100);
@@ -967,72 +1007,127 @@
     });
   }
 
-  // ---- Garante que webgazer.begin() foi chamado (a câmera só pode ser
-  //      iniciada uma vez; chamadas seguintes reaproveitam a sessão) ----
   function ensureWebGazerBegun() {
     if (webgazerStarted) return Promise.resolve();
-    // A versão atual do WebGazer só suporta o rastreador "TFFacemesh" (baseado em
-    // MediaPipe/TensorFlow) — o antigo "clmtrackr" foi removido, então não tentamos
-    // mais trocar de rastreador aqui.
+    // Não trocamos de rastreador – usamos o padrão (TFFacemesh)
     return webgazer.begin().then(() => {
       webgazerStarted = true;
-      // Desliga o ponto de predição nativo do WebGazer: usamos nosso próprio
-      // cursor (#eyeCursor), então dois pontos ao mesmo tempo confundiriam o usuário.
       webgazer.showPredictionPoints(false);
       webgazer.params.saveDataAcrossSessions = false;
     });
   }
 
-  // ---- Define o listener de gaze (usado após iniciar/calibrar) ----
+  // ---- Suavização: média móvel ----
+  function smoothGaze(x, y) {
+    history.push({ x, y });
+    if (history.length > HISTORY_SIZE) history.shift();
+    let sumX = 0, sumY = 0;
+    for (let p of history) {
+      sumX += p.x;
+      sumY += p.y;
+    }
+    smoothedX = sumX / history.length;
+    smoothedY = sumY / history.length;
+    return { x: smoothedX, y: smoothedY };
+  }
+
+  // ---- Listener de gaze (com suavização) ----
   function setupGazeListener() {
     if (typeof webgazer === 'undefined') return;
     webgazer.setGazeListener((data) => {
       if (data && eyeTrackingActive) {
-        eyeCursor.style.left = data.x + 'px';
-        eyeCursor.style.top = data.y + 'px';
-        const element = document.elementFromPoint(data.x, data.y);
-        if (element) handleDwell(element);
+        // Aplica suavização
+        const smooth = smoothGaze(data.x, data.y);
+        // Atualiza a posição do cursor
+        eyeCursor.style.left = smooth.x + 'px';
+        eyeCursor.style.top = smooth.y + 'px';
+
+        // Obtém o elemento sob o cursor suavizado
+        const element = document.elementFromPoint(smooth.x, smooth.y);
+        if (element) handleDwell(element, smooth.x, smooth.y);
       }
     });
   }
 
-  // ---- Dwell (clique por tempo de permanência do olhar) ----
-  function handleDwell(element) {
-    if (!element) return;
+  // ---- Dwell com tolerância espacial e progresso visual ----
+  let dwellStartX = 0, dwellStartY = 0;
+  let dwellTargetElement = null;
+  let dwellElapsed = 0; // em ms
+  let dwellTimerId = null;
+
+  function handleDwell(element, gazeX, gazeY) {
     // Ignora elementos que não devem ser clicados
-    if (element.id === 'eyeCursor' ||
+    if (!element ||
+        element.id === 'eyeCursor' ||
         element.closest('.sidebar') ||
         element.closest('.body-map-container') ||
         element.closest('.footer') ||
         element.closest('#calibrationOverlay') ||
         element.id === 'display' ||
         element.closest('.suggestions')) {
-      clearTimeout(dwellTimer);
-      dwellTimer = null;
+      resetDwell();
       return;
     }
-    if (dwellTimer && dwellTimer._element !== element) {
-      clearTimeout(dwellTimer);
-      dwellTimer = null;
-    }
-    if (dwellTimer) return;
 
-    dwellTimer = setTimeout(() => {
-      element.click();
-      playFeedback();
-      element.style.transition = 'background 0.1s';
-      element.style.background = 'rgba(255,255,0,0.5)';
-      setTimeout(() => { element.style.background = ''; }, 200);
-      dwellTimer = null;
-    }, DWELL_TIME);
-    dwellTimer._element = element;
+    // Se não houver timer ativo, inicia um novo
+    if (!dwellTimerId) {
+      dwellStartX = gazeX;
+      dwellStartY = gazeY;
+      dwellTargetElement = element;
+      dwellElapsed = 0;
+      drawProgress(0);
+      dwellTimerId = setInterval(() => {
+        dwellElapsed += 100; // a cada 100ms
+        const progress = Math.min(dwellElapsed / DWELL_TIME, 1);
+        drawProgress(progress);
+        if (dwellElapsed >= DWELL_TIME) {
+          // Clique!
+          clearInterval(dwellTimerId);
+          dwellTimerId = null;
+          drawProgress(0);
+          element.click();
+          playFeedback();
+          // feedback visual de clique
+          element.style.transition = 'background 0.1s';
+          element.style.background = 'rgba(255,255,0,0.5)';
+          setTimeout(() => { element.style.background = ''; }, 200);
+          resetDwell();
+        }
+      }, 100);
+      return;
+    }
+
+    // Timer já existe: verifica se ainda estamos no mesmo alvo (com tolerância)
+    const distance = Math.hypot(gazeX - dwellStartX, gazeY - dwellStartY);
+    const isSameElement = (dwellTargetElement === element) || 
+                          (dwellTargetElement && element && dwellTargetElement.contains(element));
+    // Tolerância de 30px E mesmo elemento (ou ancestral)
+    if (distance < 30 && isSameElement) {
+      // Continua o timer – não faz nada
+      return;
+    } else {
+      // Saiu do alvo: reinicia o timer
+      resetDwell();
+      // Tenta iniciar novamente com o novo elemento
+      handleDwell(element, gazeX, gazeY);
+    }
   }
 
-  // ---- Inicia o rastreamento (sem exibir a prévia da câmera) ----
+  function resetDwell() {
+    if (dwellTimerId) {
+      clearInterval(dwellTimerId);
+      dwellTimerId = null;
+    }
+    drawProgress(0);
+    dwellTargetElement = null;
+    dwellElapsed = 0;
+  }
+
+  // ---- Funções de controle ----
   function startEyeTracking() {
     if (eyeTrackingActive) return;
     if (!webgazerLoaded) {
-      alert('WebGazer ainda não carregou. Aguarde alguns segundos e tente novamente.');
+      alert('WebGazer ainda não carregou.');
       return;
     }
     if (calibrationInProgress) return;
@@ -1046,46 +1141,37 @@
         eyeTrackingActive = true;
         eyeCursor.style.display = 'block';
         localStorage.setItem('eyeTracking', 'true');
-        console.log('Eye tracking iniciado.');
+        console.log('Eye tracking iniciado (suavizado).');
       })
       .catch(err => {
         console.error('Erro ao iniciar WebGazer:', err);
-        alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.');
+        alert('Não foi possível acessar a câmera.');
       });
   }
 
-  // ---- Para o rastreamento (mantém a câmera "quente" para reiniciar rápido) ----
   function stopEyeTracking() {
     if (!eyeTrackingActive) return;
     eyeTrackingActive = false;
     eyeCursor.style.display = 'none';
+    resetDwell();
     if (typeof webgazer !== 'undefined') {
       webgazer.setGazeListener(function() {});
     }
-    clearTimeout(dwellTimer);
-    dwellTimer = null;
     localStorage.setItem('eyeTracking', 'false');
     console.log('Eye tracking parado.');
   }
 
-  // ---- CALIBRAÇÃO REAL: grade de 9 pontos clicáveis ----
-  // O WebGazer não possui um método calibrate()/setCalibrationCompleteCallback().
-  // A forma correta de calibrar é fazer o usuário CLICAR em pontos conhecidos da
-  // tela enquanto olha para eles: cada clique alimenta o modelo de regressão
-  // interno do WebGazer com (posição do olhar na imagem da câmera -> posição do clique).
+  // ---- Calibração (mantida igual, mas com CLICKS_PER_DOT = 3 para agilizar) ----
   function calibrateEye() {
     if (!webgazerLoaded) {
-      alert('WebGazer ainda não foi carregado. Aguarde e tente novamente.');
+      alert('WebGazer ainda não foi carregado.');
       return;
     }
     if (calibrationInProgress) return;
     calibrationInProgress = true;
-
-    // Pausa o clique por permanência enquanto calibra
     eyeTrackingActive = false;
     eyeCursor.style.display = 'none';
-    clearTimeout(dwellTimer);
-    dwellTimer = null;
+    resetDwell();
 
     ensureWebGazerBegun()
       .then(() => {
@@ -1097,15 +1183,18 @@
       })
       .catch(err => {
         console.error('Erro ao iniciar WebGazer:', err);
-        alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.');
+        alert('Não foi possível acessar a câmera.');
         calibrationInProgress = false;
       });
   }
 
+  const CLICKS_PER_DOT = 3; // reduzi para 3 para agilizar
+
   function buildCalibrationUI() {
-    calibrationOverlay.innerHTML = '';
-    calibrationOverlay.style.display = 'flex';
-    calibrationOverlay.style.pointerEvents = 'auto';
+    const overlay = document.getElementById('calibrationOverlay');
+    overlay.innerHTML = '';
+    overlay.style.display = 'flex';
+    overlay.style.pointerEvents = 'auto';
 
     const instructions = document.createElement('div');
     instructions.style.cssText = `
@@ -1114,7 +1203,7 @@
       font-size: 0.55em; max-width: 90%; text-align: center; line-height: 1.4;
     `;
     instructions.textContent = `Olhe fixamente para cada ponto vermelho e clique nele ${CLICKS_PER_DOT} vezes. O ponto fica verde e some quando terminar.`;
-    calibrationOverlay.appendChild(instructions);
+    overlay.appendChild(instructions);
 
     const positions = [
       [5, 8], [50, 8], [95, 8],
@@ -1148,14 +1237,15 @@
           if (dotsRemaining <= 0) finishCalibration();
         }
       });
-      calibrationOverlay.appendChild(dot);
+      overlay.appendChild(dot);
     });
   }
 
   function finishCalibration() {
-    calibrationOverlay.style.display = 'none';
-    calibrationOverlay.style.pointerEvents = 'none';
-    calibrationOverlay.innerHTML = '<span>Calibrando... Siga os pontos com o olhar</span>';
+    const overlay = document.getElementById('calibrationOverlay');
+    overlay.style.display = 'none';
+    overlay.style.pointerEvents = 'none';
+    overlay.innerHTML = '<span>Calibrando... Siga os pontos com o olhar</span>';
 
     webgazer.showVideoPreview(false);
     webgazer.showFaceOverlay(false);
@@ -1167,10 +1257,10 @@
     localStorage.setItem('eyeTracking', 'true');
     calibrationInProgress = false;
     playFeedback();
-    console.log('Calibração concluída com sucesso.');
+    console.log('Calibração concluída.');
   }
 
-  // ---- EXPÕE FUNÇÕES GLOBALMENTE ----
+  // ---- EXPÕE FUNÇÕES ----
   window.startEyeTracking = startEyeTracking;
   window.stopEyeTracking = stopEyeTracking;
   window.calibrateEye = calibrateEye;
@@ -1185,21 +1275,17 @@
     });
   }
 
-  // ---- BOTÕES DA SIDEBAR ----
+  // ---- BOTÕES ----
   document.getElementById('startEyeBtn')?.addEventListener('click', startEyeTracking);
   document.getElementById('stopEyeBtn')?.addEventListener('click', stopEyeTracking);
   document.getElementById('calibrateEyeBtn')?.addEventListener('click', calibrateEye);
 
-  // ---- CARREGA O WEBGAZER NA INICIALIZAÇÃO ----
+  // ---- CARREGA WEBGAZER ----
   loadWebGazer()
-    .then(() => {
-      console.log('WebGazer carregado com sucesso.');
-      // Não reinicia automaticamente a câmera ao recarregar a página:
-      // é mais seguro (e melhor UX) o usuário clicar em "Iniciar Olhar" de novo.
-    })
+    .then(() => console.log('WebGazer carregado.'))
     .catch(err => {
       console.error('Erro ao carregar WebGazer:', err);
-      alert('Não foi possível carregar o WebGazer. Verifique sua conexão com a internet.');
+      alert('Não foi possível carregar o WebGazer.');
     });
 
   // ---- DESLIGA AO SAIR ----
@@ -1209,6 +1295,7 @@
     }
   });
 })();
+  
   </script>
 
   <footer class="footer">
