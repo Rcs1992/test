@@ -932,6 +932,69 @@
 // EYE TRACKING (WebGazer) - VERSÃO CORRIGIDA E FUNCIONAL
 // ==========================================
 (function() {
+  // ==========================================================
+  // REDIRECIONAMENTO DOS ARQUIVOS DO MEDIAPIPE (FaceMesh)
+  // ==========================================================
+  // O WebGazer usa por baixo dos panos o @mediapipe/face_mesh para detectar o
+  // rosto. Esse componente tenta baixar seus arquivos de modelo (.wasm, .data,
+  // .binarypb) usando um caminho RELATIVO À PÁGINA ATUAL (ex: "mediapipe/face_mesh/..."),
+  // em vez de buscar do CDN de onde ele realmente deveria vir. Como esse
+  // comportamento está embutido dentro do próprio WebGazer (não há uma opção
+  // pública para configurar isso), interceptamos aqui toda tentativa de
+  // carregar algo em "mediapipe/face_mesh/" — seja via tag <script>, via
+  // XMLHttpRequest ou via fetch — e redirecionamos para o CDN oficial do
+  // MediaPipe (jsDelivr), onde esses arquivos sempre existem.
+  const MEDIAPIPE_CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/';
+  function redirectIfMediapipeAsset(url) {
+    if (typeof url === 'string' && url.indexOf('/mediapipe/face_mesh/') !== -1) {
+      const filename = url.substring(url.lastIndexOf('/') + 1);
+      return MEDIAPIPE_CDN_BASE + filename;
+    }
+    return url;
+  }
+
+  // Intercepta <script src="...">
+  try {
+    const scriptSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+    if (scriptSrcDescriptor && scriptSrcDescriptor.set) {
+      Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+        configurable: true,
+        enumerable: scriptSrcDescriptor.enumerable,
+        get: function() { return scriptSrcDescriptor.get.call(this); },
+        set: function(value) { scriptSrcDescriptor.set.call(this, redirectIfMediapipeAsset(value)); }
+      });
+    }
+  } catch (e) {
+    console.warn('Não foi possível instalar o redirecionamento de <script src>:', e);
+  }
+
+  // Intercepta XMLHttpRequest.open(...)
+  try {
+    const origXHROpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      return origXHROpen.call(this, method, redirectIfMediapipeAsset(url), ...rest);
+    };
+  } catch (e) {
+    console.warn('Não foi possível instalar o redirecionamento de XMLHttpRequest:', e);
+  }
+
+  // Intercepta fetch(...)
+  try {
+    const origFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {
+      if (typeof input === 'string') {
+        input = redirectIfMediapipeAsset(input);
+      } else if (input && input.url) {
+        input = new Request(redirectIfMediapipeAsset(input.url), input);
+      }
+      return origFetch(input, init);
+    };
+  } catch (e) {
+    console.warn('Não foi possível instalar o redirecionamento de fetch:', e);
+  }
+})();
+
+(function() {
   let eyeTrackingActive = false;
   let dwellTimer = null;
   let DWELL_TIME = 1200;
@@ -983,20 +1046,36 @@
     });
   }
 
+  // ---- Suavização do olhar (reduz o tremor natural das predições) ----
+  let gazeBuffer = [];
+  const GAZE_SMOOTHING_WINDOW = 8; // quantas leituras recentes são usadas na média
+
   // ---- Define o listener de gaze (usado após iniciar/calibrar) ----
   function setupGazeListener() {
     if (typeof webgazer === 'undefined') return;
+    gazeBuffer = [];
     webgazer.setGazeListener((data) => {
       if (data && eyeTrackingActive) {
-        eyeCursor.style.left = data.x + 'px';
-        eyeCursor.style.top = data.y + 'px';
-        const element = document.elementFromPoint(data.x, data.y);
+        gazeBuffer.push({ x: data.x, y: data.y });
+        if (gazeBuffer.length > GAZE_SMOOTHING_WINDOW) gazeBuffer.shift();
+        const avgX = gazeBuffer.reduce((sum, p) => sum + p.x, 0) / gazeBuffer.length;
+        const avgY = gazeBuffer.reduce((sum, p) => sum + p.y, 0) / gazeBuffer.length;
+        eyeCursor.style.left = avgX + 'px';
+        eyeCursor.style.top = avgY + 'px';
+        const element = document.elementFromPoint(avgX, avgY);
         if (element) handleDwell(element);
       }
     });
   }
 
   // ---- Dwell (clique por tempo de permanência do olhar) ----
+  // "pendingElement/pendingCount" evita que um pequeno tremor do olhar troque
+  // o alvo do clique a cada frame: só trocamos de alvo se o olhar apontar
+  // consistentemente para outro elemento por vários frames seguidos.
+  let pendingElement = null;
+  let pendingCount = 0;
+  const SWITCH_THRESHOLD = 4; // frames seguidos apontando para o novo elemento antes de trocar o alvo
+
   function handleDwell(element) {
     if (!element) return;
     // Ignora elementos que não devem ser clicados
@@ -1009,14 +1088,31 @@
         element.closest('.suggestions')) {
       clearTimeout(dwellTimer);
       dwellTimer = null;
+      pendingElement = null;
+      pendingCount = 0;
       return;
     }
-    if (dwellTimer && dwellTimer._element !== element) {
-      clearTimeout(dwellTimer);
-      dwellTimer = null;
-    }
-    if (dwellTimer) return;
 
+    // Já estamos contando tempo para este elemento: nada a fazer, deixa o timer correr.
+    if (dwellTimer && dwellTimer._element === element) {
+      pendingElement = null;
+      pendingCount = 0;
+      return;
+    }
+
+    // O olhar aponta para um elemento diferente do que está sendo cronometrado.
+    // Só trocamos de alvo depois de várias leituras seguidas confirmando o novo elemento.
+    if (pendingElement === element) {
+      pendingCount++;
+    } else {
+      pendingElement = element;
+      pendingCount = 1;
+    }
+    if (pendingCount < SWITCH_THRESHOLD) return;
+
+    pendingElement = null;
+    pendingCount = 0;
+    clearTimeout(dwellTimer);
     dwellTimer = setTimeout(() => {
       element.click();
       playFeedback();
@@ -1212,7 +1308,7 @@
   </script>
 
   <footer class="footer">
-    <p>Rodrigo Cavalcante dos Santos- CREFITO 2 / 242633-F - Fisioterapeuta </p>
+    <p>Rodrigo Cavalcante - CREFITO 2 / 242633-F - Fisioterapeuta - CER LEBLON</p>
   </footer>
 </body>
 </html>
