@@ -917,7 +917,7 @@
     // ==========================================
     window.logout = function() {};
 
-    // ==========================================
+// ==========================================
 // EYE TRACKING (WebGazer) - CORRIGIDO
 // ==========================================
 (function() {
@@ -932,7 +932,6 @@
   script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
   script.onload = function() {
     console.log('WebGazer carregado.');
-    // Se o usuário já tinha ativado, inicia automaticamente
     if (localStorage.getItem('eyeTracking') === 'true') {
       startEyeTracking(false);
     }
@@ -946,8 +945,10 @@
     webgazer.setGazeListener(null);
     webgazer.setGazeListener((data) => {
       if (data && eyeTrackingActive) {
+        // Atualiza a posição do cursor ocular
         eyeCursor.style.left = data.x + 'px';
         eyeCursor.style.top = data.y + 'px';
+        // Verifica o elemento sob o olhar
         const element = document.elementFromPoint(data.x, data.y);
         if (element) handleDwell(element);
       }
@@ -975,7 +976,7 @@
 
     dwellTimer = setTimeout(() => {
       element.click();
-      playFeedback(); // função já existente no escopo global
+      playFeedback();
       // feedback visual breve
       element.style.transition = 'background 0.1s';
       element.style.background = 'rgba(255,255,0,0.5)';
@@ -1025,7 +1026,7 @@
     console.log('Eye tracking parado.');
   }
 
-  // ---- CALIBRAÇÃO (nova versão) ----
+  // ---- CALIBRAÇÃO (versão corrigida) ----
   function calibrateEye() {
     if (typeof webgazer === 'undefined') {
       alert('WebGazer não carregado.');
@@ -1045,7 +1046,7 @@
     webgazer.clearData();
     webgazer.setGazeListener(null);
 
-    // 3. Mostra uma mensagem amigável (NÃO bloqueia a tela)
+    // 3. Mostra mensagem amigável
     const msg = document.createElement('div');
     msg.id = 'calibrationMessage';
     msg.style.cssText = `
@@ -1059,8 +1060,24 @@
     msg.textContent = '🔵 Calibração em andamento… Siga os pontos com os olhos.';
     document.body.appendChild(msg);
 
-    // 4. Inicia a calibração (o WebGazer exibe os pontos automaticamente)
-    webgazer.begin();
+    // 4. Inicia o WebGazer e a calibração
+    webgazer.begin()
+      .then(() => {
+        console.log('WebGazer iniciado. Iniciando calibração...');
+        // Chama explicitamente a calibração
+        webgazer.calibrate();
+      })
+      .catch(err => {
+        console.error('Erro ao iniciar WebGazer:', err);
+        alert('Não foi possível acessar a câmera. Verifique as permissões.');
+        const msgEl = document.getElementById('calibrationMessage');
+        if (msgEl) msgEl.remove();
+        calibrationInProgress = false;
+        // Tenta reativar o tracking se estava ativo antes
+        if (localStorage.getItem('eyeTracking') === 'true') {
+          startEyeTracking(false);
+        }
+      });
 
     // 5. Aguarda o evento de fim de calibração
     webgazer.on('calibrationEnd', function() {
@@ -1121,8 +1138,7 @@
       webgazer.end();
     }
   });
-})();
-  </script>
+})();  </script>
 
  </script>
 
