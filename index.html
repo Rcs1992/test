@@ -918,28 +918,31 @@
     window.logout = function() {};
 
 // ==========================================
-// EYE TRACKING (WebGazer) - VERSÃO CORRIGIDA
+// EYE TRACKING (WebGazer) - CALIBRAÇÃO MANUAL
 // ==========================================
 (function() {
+  // ---- Estado global ----
   let eyeTrackingActive = false;
   let dwellTimer = null;
   let DWELL_TIME = 1200;
   const eyeCursor = document.getElementById('eyeCursor');
-  let calibrationInProgress = false;
-  let webgazerLoaded = false;
+  let calibrationPoints = [];
+  let currentCalibrationIndex = 0;
+  let isCalibrating = false;
+  let webgazerReady = false;
 
-  // ---- Carrega o WebGazer via CDN ----
+  // ---- Carrega o WebGazer ----
   function loadWebGazer() {
     return new Promise((resolve, reject) => {
       if (typeof webgazer !== 'undefined') {
-        webgazerLoaded = true;
+        webgazerReady = true;
         resolve();
         return;
       }
       const script = document.createElement('script');
       script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
       script.onload = () => {
-        webgazerLoaded = true;
+        webgazerReady = true;
         resolve();
       };
       script.onerror = () => reject(new Error('Falha ao carregar WebGazer.'));
@@ -947,9 +950,9 @@
     });
   }
 
-  // ---- Aguarda o carregamento antes de usar ----
+  // ---- Garante que o WebGazer está carregado ----
   function ensureWebGazer() {
-    if (!webgazerLoaded) {
+    if (!webgazerReady) {
       return loadWebGazer();
     }
     return Promise.resolve();
@@ -1002,11 +1005,11 @@
   // ---- Inicia o rastreamento (após calibração ou direto) ----
   function startEyeTracking(clearData = false) {
     if (eyeTrackingActive) return;
-    if (!webgazerLoaded) {
+    if (!webgazerReady) {
       alert('WebGazer ainda não carregou. Tente novamente.');
       return;
     }
-    if (calibrationInProgress) return;
+    if (isCalibrating) return;
 
     if (clearData) {
       webgazer.clearData();
@@ -1041,85 +1044,175 @@
     console.log('Eye tracking parado.');
   }
 
-  // ---- CALIBRAÇÃO (com API correta) ----
+  // ---- CRIA OS PONTOS DE CALIBRAÇÃO (9 pontos) ----
+  function createCalibrationPoints() {
+    // Remove pontos antigos, se houver
+    document.querySelectorAll('.calibration-point').forEach(el => el.remove());
+
+    const points = [
+      { x: 0.1, y: 0.1 }, { x: 0.5, y: 0.1 }, { x: 0.9, y: 0.1 },
+      { x: 0.1, y: 0.5 }, { x: 0.5, y: 0.5 }, { x: 0.9, y: 0.5 },
+      { x: 0.1, y: 0.9 }, { x: 0.5, y: 0.9 }, { x: 0.9, y: 0.9 }
+    ];
+
+    calibrationPoints = points.map((p, index) => {
+      const btn = document.createElement('button');
+      btn.className = 'calibration-point';
+      btn.textContent = (index + 1);
+      btn.style.cssText = `
+        position: fixed;
+        left: ${p.x * window.innerWidth}px;
+        top: ${p.y * window.innerHeight}px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: rgba(255, 0, 0, 0.7);
+        border: 3px solid white;
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+        z-index: 10000;
+        cursor: pointer;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 15px rgba(0,0,0,0.5);
+        transition: background 0.3s;
+      `;
+      btn.dataset.index = index;
+      btn.addEventListener('click', calibrationClickHandler);
+      document.body.appendChild(btn);
+      return btn;
+    });
+  }
+
+  // ---- Handler de clique nos pontos de calibração ----
+  function calibrationClickHandler(e) {
+    const btn = e.currentTarget;
+    const index = parseInt(btn.dataset.index);
+
+    // Registra a posição do clique para calibração
+    webgazer.recordScreenPosition(e.clientX, e.clientY);
+
+    // Feedback visual
+    btn.style.background = 'rgba(0, 255, 0, 0.7)';
+    btn.textContent = '✓';
+    btn.disabled = true;
+
+    // Avança para o próximo ponto
+    currentCalibrationIndex++;
+
+    // Verifica se todos os pontos foram clicados
+    if (currentCalibrationIndex >= calibrationPoints.length) {
+      finishCalibration();
+    } else {
+      // Destaca o próximo ponto (opcional)
+      const nextBtn = calibrationPoints[currentCalibrationIndex];
+      if (nextBtn) {
+        nextBtn.style.background = 'rgba(0, 200, 255, 0.8)';
+        nextBtn.style.transform = 'translate(-50%, -50%) scale(1.2)';
+      }
+    }
+  }
+
+  // ---- Finaliza a calibração ----
+  function finishCalibration() {
+    // Remove todos os pontos
+    document.querySelectorAll('.calibration-point').forEach(el => el.remove());
+    calibrationPoints = [];
+    currentCalibrationIndex = 0;
+    isCalibrating = false;
+
+    // Remove a mensagem de instrução, se existir
+    const msg = document.getElementById('calibrationMessage');
+    if (msg) msg.remove();
+
+    // Reconfigura o listener e ativa o tracking
+    setupGazeListener();
+    eyeTrackingActive = true;
+    eyeCursor.style.display = 'block';
+    localStorage.setItem('eyeTracking', 'true');
+    playFeedback();
+    console.log('✅ Calibração concluída com sucesso.');
+    alert('Calibração concluída! O rastreamento ocular está ativo.');
+  }
+
+  // ---- CALIBRAÇÃO (inicia o processo) ----
   function calibrateEye() {
-    if (!webgazerLoaded) {
+    if (!webgazerReady) {
       alert('WebGazer não carregado. Aguarde e tente novamente.');
       return;
     }
-    if (calibrationInProgress) return;
-    calibrationInProgress = true;
-
-    // Para o tracking ativo
+    if (isCalibrating) return;
     if (eyeTrackingActive) {
+      // Para o tracking atual
       webgazer.end();
       eyeTrackingActive = false;
       eyeCursor.style.display = 'none';
     }
 
-    // Limpa dados e remove listeners
+    isCalibrating = true;
+    currentCalibrationIndex = 0;
+
+    // Limpa dados antigos
     webgazer.clearData();
     webgazer.setGazeListener(null);
 
-    // Mostra mensagem de calibração
+    // Cria os 9 pontos
+    createCalibrationPoints();
+
+    // Mostra uma mensagem de instrução
     const msg = document.createElement('div');
     msg.id = 'calibrationMessage';
     msg.style.cssText = `
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
       background: rgba(0,0,0,0.8); color: #fff; padding: 15px 30px;
-      border-radius: 8px; font-size: 1.2em; z-index: 9999;
+      border-radius: 8px; font-size: 1.2em; z-index: 10001;
       box-shadow: 0 4px 8px rgba(0,0,0,0.5);
       pointer-events: none; text-align: center;
     `;
-    msg.textContent = '🔵 Calibração em andamento… Siga os pontos com os olhos.';
+    msg.textContent = '🔵 Clique nos 9 pontos vermelhos na ordem indicada.';
     document.body.appendChild(msg);
 
-    // Define o callback que será chamado quando a calibração terminar
-    webgazer.setCalibrationCompleteCallback(function() {
-      // Remove mensagem
-      const msgEl = document.getElementById('calibrationMessage');
-      if (msgEl) msgEl.remove();
+    // Destaca o primeiro ponto
+    if (calibrationPoints.length > 0) {
+      calibrationPoints[0].style.background = 'rgba(0, 200, 255, 0.8)';
+      calibrationPoints[0].style.transform = 'translate(-50%, -50%) scale(1.2)';
+    }
 
-      // Reconfigura listener e ativa tracking
-      setupGazeListener();
-      eyeTrackingActive = true;
-      eyeCursor.style.display = 'block';
-      localStorage.setItem('eyeTracking', 'true');
-      calibrationInProgress = false;
-      playFeedback();
-      console.log('✅ Calibração concluída com sucesso.');
-    });
-
-    // Inicia o WebGazer e a calibração
+    // Inicia o WebGazer (se não estiver rodando)
     webgazer.begin()
       .then(() => {
-        console.log('WebGazer iniciado. Iniciando calibração...');
-        webgazer.calibrate();
+        console.log('WebGazer iniciado para calibração.');
       })
       .catch(err => {
         console.error('Erro ao iniciar WebGazer:', err);
         alert('Não foi possível acessar a câmera. Verifique as permissões.');
+        // Limpa os pontos e cancela calibração
+        document.querySelectorAll('.calibration-point').forEach(el => el.remove());
         const msgEl = document.getElementById('calibrationMessage');
         if (msgEl) msgEl.remove();
-        calibrationInProgress = false;
+        isCalibrating = false;
         // Tenta reativar se estava ativo antes
         if (localStorage.getItem('eyeTracking') === 'true') {
           startEyeTracking(false);
         }
       });
 
-    // Timeout de segurança (30s)
+    // Timeout de segurança (60s)
     setTimeout(() => {
-      if (calibrationInProgress) {
+      if (isCalibrating) {
         const msgEl = document.getElementById('calibrationMessage');
-        if (msgEl) msgEl.textContent = '⚠️ Calibração demorou muito. Tente novamente.';
+        if (msgEl) msgEl.textContent = '⚠️ Calibração excedeu o tempo. Tente novamente.';
         setTimeout(() => {
+          document.querySelectorAll('.calibration-point').forEach(el => el.remove());
           if (msgEl) msgEl.remove();
-          calibrationInProgress = false;
-          startEyeTracking(false);
+          isCalibrating = false;
+          // Reativa o tracking se já estava ativo
+          if (localStorage.getItem('eyeTracking') === 'true') {
+            startEyeTracking(false);
+          }
         }, 3000);
       }
-    }, 30000);
+    }, 60000);
   }
 
   // ---- EXPÕE FUNÇÕES GLOBALMENTE ----
@@ -1162,7 +1255,9 @@
       webgazer.end();
     }
   });
+
 })();
+  
   </script>
 
  </script>
