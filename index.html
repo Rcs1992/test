@@ -949,7 +949,7 @@
     window.logout = function() {};
 
 // ==========================================
-// EYE TRACKING (WebGazer) - DWELL POR ACÚMULO DE TEMPO
+// EYE TRACKING (WebGazer) - VERSÃO ESTÁVEL
 // ==========================================
 (function() {
   // ==========================================================
@@ -1004,16 +1004,16 @@
   let webgazerLoaded = false;
   let webgazerStarted = false;
   const CLICKS_PER_DOT = 5;
+  const CLICK_COOLDOWN = 500; // ms após um clique para evitar múltiplos
 
-  // ---- Estado do dwell (acumulação de tempo) ----
-  let dwellState = {
-    target: null,        // elemento alvo atual
-    accumulated: 0,      // tempo acumulado em ms
-    lastTimestamp: 0,    // timestamp do último frame que apontou para o alvo
-    graceTimer: null,    // timer para tolerância de saída
-    isDwelling: false    // se está no processo de dwell (para feedback visual)
-  };
+  // ---- Estado do dwell ----
+  let dwellTarget = null;        // elemento alvo atual
+  let dwellAccumulated = 0;      // tempo acumulado em ms
+  let dwellLastTimestamp = 0;    // timestamp do último frame válido
+  let isDwelling = false;        // se está no processo de dwell (feedback visual)
+  let lastClickTime = 0;         // timestamp do último clique para cooldown
 
+  // ---- Funções auxiliares ----
   function loadWebGazer() {
     return new Promise((resolve, reject) => {
       let tries = 0;
@@ -1044,30 +1044,29 @@
     });
   }
 
-  // ---- Suavização do olhar ----
-  let smoothX = null;
-  let smoothY = null;
-  const EMA_ALPHA = 0.3; // ligeiramente maior para reagir mais rápido
-  const OUTLIER_JUMP_PX = 250;
+  // ---- Sem suavização: usamos os dados crus, mas com um limiar de salto ----
+  let lastRawX = null, lastRawY = null;
+  const JUMP_THRESHOLD = 300; // px
 
-  function smoothGaze(rawX, rawY) {
-    if (smoothX === null) {
-      smoothX = rawX;
-      smoothY = rawY;
-      return { x: smoothX, y: smoothY };
+  function filterGaze(rawX, rawY) {
+    if (lastRawX === null || lastRawY === null) {
+      lastRawX = rawX;
+      lastRawY = rawY;
+      return { x: rawX, y: rawY };
     }
-    const jump = Math.hypot(rawX - smoothX, rawY - smoothY);
-    if (jump > OUTLIER_JUMP_PX) {
-      return { x: smoothX, y: smoothY };
+    const jump = Math.hypot(rawX - lastRawX, rawY - lastRawY);
+    if (jump > JUMP_THRESHOLD) {
+      // Ignora este frame (provavelmente piscada ou falha)
+      return { x: lastRawX, y: lastRawY };
     }
-    smoothX += EMA_ALPHA * (rawX - smoothX);
-    smoothY += EMA_ALPHA * (rawY - smoothY);
-    return { x: smoothX, y: smoothY };
+    lastRawX = rawX;
+    lastRawY = rawY;
+    return { x: rawX, y: rawY };
   }
 
   // ---- "Ímã" de alvo clicável ----
   const CLICKABLE_SELECTOR = '.key, .special-key, .img-button, .suggestion, .back-button, #readAloudBtn, .body-map-header button';
-  const SNAP_MARGIN = 50; // aumentado para maior facilidade
+  const SNAP_MARGIN = 60; // aumentado para maior facilidade
 
   function findNearestClickable(x, y) {
     const candidates = document.querySelectorAll(CLICKABLE_SELECTOR);
@@ -1076,7 +1075,6 @@
     candidates.forEach(el => {
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
-      // Verifica se o ponto está dentro da margem
       const withinX = x >= rect.left - SNAP_MARGIN && x <= rect.right + SNAP_MARGIN;
       const withinY = y >= rect.top - SNAP_MARGIN && y <= rect.bottom + SNAP_MARGIN;
       if (withinX && withinY) {
@@ -1105,9 +1103,43 @@
     }
   }
 
-  // ---- Gerencia o dwell com acumulação ----
+  // ---- Feedback visual de dwell em andamento ----
+  function setDwelling(active) {
+    if (isDwelling === active) return;
+    isDwelling = active;
+    document.querySelectorAll('.gaze-dwelling').forEach(el => el.classList.remove('gaze-dwelling'));
+    if (active && dwellTarget) {
+      dwellTarget.classList.add('gaze-dwelling');
+    }
+  }
+
+  // ---- Reseta o estado do dwell ----
+  function resetDwell() {
+    dwellTarget = null;
+    dwellAccumulated = 0;
+    dwellLastTimestamp = 0;
+    setDwelling(false);
+  }
+
+  // ---- Executa o clique (com cooldown) ----
+  function performClick(element) {
+    const now = performance.now();
+    if (now - lastClickTime < CLICK_COOLDOWN) {
+      return; // cooldown ativo
+    }
+    lastClickTime = now;
+    element.click();
+    playFeedback();
+    element.style.transition = 'background 0.1s';
+    element.style.background = 'rgba(255,255,0,0.5)';
+    setTimeout(() => { element.style.background = ''; }, 200);
+    setGazeFocus(null);
+    resetDwell();
+  }
+
+  // ---- Atualiza o dwell (chamado a cada frame) ----
   function updateDwell(target, timestamp) {
-    // Se o target for inválido ou não clicável, reseta o dwell
+    // Verifica se o target é clicável e não está em áreas proibidas
     if (!target || target.id === 'eyeCursor' ||
         target.closest('.sidebar') ||
         target.closest('.body-map-container') ||
@@ -1119,83 +1151,46 @@
       return;
     }
 
-    // Se mudou de alvo, reseta o estado
-    if (dwellState.target !== target) {
+    // Se o alvo mudou, reseta o estado
+    if (target !== dwellTarget) {
       resetDwell();
-      dwellState.target = target;
-      dwellState.accumulated = 0;
-      dwellState.lastTimestamp = timestamp;
-      // Inicia o feedback visual de dwelling
+      dwellTarget = target;
+      dwellAccumulated = 0;
+      dwellLastTimestamp = timestamp;
       setDwelling(true);
       return;
     }
 
-    // Mesmo alvo: calcula o tempo decorrido desde o último frame
-    if (dwellState.lastTimestamp > 0) {
-      const delta = timestamp - dwellState.lastTimestamp;
-      // Só acumula se o delta for razoável (evita picos)
-      if (delta > 0 && delta < 100) { // 100ms é o máximo entre frames
-        dwellState.accumulated += delta;
+    // Mesmo alvo: acumula tempo
+    if (dwellLastTimestamp > 0) {
+      const delta = timestamp - dwellLastTimestamp;
+      // Só acumula se o delta for razoável (entre 5ms e 100ms)
+      if (delta > 5 && delta < 100) {
+        dwellAccumulated += delta;
       }
     }
-    dwellState.lastTimestamp = timestamp;
+    dwellLastTimestamp = timestamp;
 
-    // Se acumulou tempo suficiente, executa o clique
-    if (dwellState.accumulated >= DWELL_TIME) {
-      performClick(target);
-      resetDwell();
+    // Se acumulou o suficiente, executa o clique
+    if (dwellAccumulated >= DWELL_TIME) {
+      performClick(dwellTarget);
     }
   }
 
-  // ---- Reseta o estado do dwell ----
-  function resetDwell() {
-    dwellState.target = null;
-    dwellState.accumulated = 0;
-    dwellState.lastTimestamp = 0;
-    if (dwellState.graceTimer) {
-      clearTimeout(dwellState.graceTimer);
-      dwellState.graceTimer = null;
-    }
-    setDwelling(false);
-  }
-
-  // ---- Feedback visual de dwell em andamento ----
-  function setDwelling(active) {
-    if (dwellState.isDwelling === active) return;
-    dwellState.isDwelling = active;
-    // Remove a classe de todos os elementos
-    document.querySelectorAll('.gaze-dwelling').forEach(el => el.classList.remove('gaze-dwelling'));
-    if (active && dwellState.target) {
-      dwellState.target.classList.add('gaze-dwelling');
-    }
-  }
-
-  // ---- Executa o clique e feedback ----
-  function performClick(element) {
-    element.click();
-    playFeedback();
-    element.style.transition = 'background 0.1s';
-    element.style.background = 'rgba(255,255,0,0.5)';
-    setTimeout(() => { element.style.background = ''; }, 200);
-    // Remove o foco visual
-    setGazeFocus(null);
-  }
-
-  // ---- Listener de gaze (chamado a cada frame) ----
+  // ---- Listener de gaze ----
   function setupGazeListener() {
     if (typeof webgazer === 'undefined') return;
-    smoothX = null;
-    smoothY = null;
+    lastRawX = null;
+    lastRawY = null;
     setGazeFocus(null);
     resetDwell();
 
     webgazer.setGazeListener((data) => {
       if (!data || !eyeTrackingActive) {
-        // Se o tracking está inativo, reseta o dwell
         resetDwell();
         return;
       }
-      const { x, y } = smoothGaze(data.x, data.y);
+      const { x, y } = filterGaze(data.x, data.y);
       eyeCursor.style.left = x + 'px';
       eyeCursor.style.top = y + 'px';
 
@@ -1203,11 +1198,10 @@
       setGazeFocus(target);
 
       if (target) {
-        // Usa o timestamp do próprio data (em ms) ou performance.now()
-        const timestamp = data.timestamp || performance.now();
-        updateDwell(target, timestamp);
+        // Usa performance.now() para maior precisão
+        const now = performance.now();
+        updateDwell(target, now);
       } else {
-        // Olhar fora de qualquer alvo: reseta o dwell imediatamente
         resetDwell();
       }
     });
@@ -1389,7 +1383,7 @@
   </script>
 
   <footer class="footer">
-    <p>RCS - CREFITO 2 / 242633-F </p>
+    <p>Rodrigo Cavalcante dos Santos - CREFITO 2 / 242633-F </p>
   </footer>
 </body>
 </html>
