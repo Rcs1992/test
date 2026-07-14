@@ -4,17 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>R.A.F.A – Recursos Avançados para Funcionalidade e Acessibilidade</title>
-  <!--
-    IMPORTANTE: o WebGazer precisa ser incluído como uma tag <script> estática
-    (e não criado dinamicamente via JavaScript com document.createElement).
-    O carregador interno do MediaPipe (usado pelo WebGazer para detectar o
-    rosto) calcula o caminho dos seus arquivos auxiliares (.wasm, .binarypb)
-    com base em qual <script> está executando; quando o script é injetado
-    dinamicamente essa referência se perde e ele passa a procurar os arquivos
-    no caminho da SUA página (ex: seudominio.github.io/pasta/mediapipe/...)
-    em vez do domínio correto (webgazer.cs.brown.edu/mediapipe/...), causando
-    erros 404 e falha ao iniciar a câmera.
-  -->
+  <!-- WebGazer deve ser carregado estaticamente -->
   <script src="https://webgazer.cs.brown.edu/webgazer.js" type="text/javascript"></script>
   <style>
     /* ===== VARIÁVEIS ===== */
@@ -29,7 +19,7 @@
       --img-button-size: 200px;
       --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       --transition-speed: 0.3s;
-      --sidebar-width: 250px;
+      --sidebar-width: 280px;
       --sidebar-bg: #fff;
       --sidebar-border: #ccc;
       --sidebar-shadow: 0 2px 8px rgba(0,0,0,0.3);
@@ -70,6 +60,7 @@
       z-index: 1000;
       padding: 20px;
       overflow-y: auto;
+      font-size: 0.9em;
     }
     .sidebar.open {
       transform: translateX(0);
@@ -84,13 +75,16 @@
     }
     .sidebar .control-group {
       margin-bottom: 15px;
+      border-bottom: 1px solid var(--sidebar-border);
+      padding-bottom: 12px;
     }
     .sidebar select,
-    .sidebar button {
+    .sidebar button,
+    .sidebar input[type="range"] {
       width: 100%;
-      padding: 10px;
+      padding: 8px;
       margin-top: 5px;
-      font-size: 1em;
+      font-size: 0.95em;
       border-radius: 6px;
       border: 1px solid var(--key-border);
       background: var(--key-bg);
@@ -100,6 +94,15 @@
     .sidebar button:hover,
     .sidebar select:hover {
       background: #e0e0e0;
+    }
+    .sidebar label {
+      display: block;
+      margin-top: 8px;
+      font-weight: 500;
+    }
+    .sidebar .value-display {
+      float: right;
+      font-weight: bold;
     }
     /* ===== BOTÃO HAMBURGER ===== */
     .open-sidebar-btn {
@@ -379,31 +382,34 @@
       z-index: 9999;
       transform: translate(-50%, -50%);
       display: none;
+      transition: width 0.2s, height 0.2s;
     }
-
-    /* ===== OVERLAY DE CALIBRAÇÃO ===== */
+    /* ===== OVERLAY DE CALIBRAÇÃO (nativo) ===== */
     #calibrationOverlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.6);
       color: #fff;
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 9998;
-      font-size: 2em;
+      font-size: 1.5em;
       font-weight: bold;
       text-align: center;
+      flex-direction: column;
+      pointer-events: none; /* permitir cliques nos pontos */
     }
-    #calibrationOverlay span {
-      background: rgba(0,0,0,0.7);
+    #calibrationOverlay .calib-msg {
+      background: rgba(0,0,0,0.8);
       padding: 20px 40px;
       border-radius: 12px;
+      margin-bottom: 20px;
+      pointer-events: none;
     }
-
     /* ===== FOCO DO OLHAR (ímã de alvo clicável) ===== */
     .gaze-focus {
       outline: 4px solid #FFD500 !important;
@@ -411,8 +417,6 @@
       box-shadow: 0 0 0 8px rgba(255,213,0,0.35) !important;
       transition: outline 0.1s, box-shadow 0.1s;
     }
-
-    /* ===== INDICADOR DE DWELL EM ANDAMENTO ===== */
     .gaze-dwelling {
       outline: 4px solid #FF6A00 !important;
       outline-offset: 2px;
@@ -465,14 +469,29 @@
       <button id="decSizeBtn">Diminuir Botões</button>
     </div>
 
-    <!-- CONTROLES EYE TRACKING -->
+    <!-- CONTROLES EYE TRACKING (MELHORADOS) -->
     <div class="control-group" id="eyeTrackingControls">
       <label><strong>Controle Ocular</strong></label>
       <button id="startEyeBtn">Iniciar Olhar</button>
       <button id="stopEyeBtn">Parar Olhar</button>
       <button id="calibrateEyeBtn">Calibrar</button>
-      <label for="dwellSlider">Tempo de clique (ms): <span id="dwellValue">1200</span></label>
-      <input type="range" id="dwellSlider" min="500" max="3000" step="100" value="1200">
+      <button id="resetCalibrationBtn">Resetar Calibração</button>
+
+      <label for="gridSelect">Pontos de calibração:</label>
+      <select id="gridSelect">
+        <option value="3">3×3 (9 pontos)</option>
+        <option value="4" selected>4×4 (16 pontos)</option>
+        <option value="5">5×5 (25 pontos)</option>
+      </select>
+
+      <label for="dwellSlider">Tempo de clique (ms): <span id="dwellValue" class="value-display">1200</span></label>
+      <input type="range" id="dwellSlider" min="500" max="3000" step="50" value="1200">
+
+      <label for="snapMarginSlider">Margem de atração (px): <span id="snapMarginValue" class="value-display">60</span></label>
+      <input type="range" id="snapMarginSlider" min="20" max="150" step="5" value="60">
+
+      <label for="smoothSlider">Suavização (0 = cru, 1 = máximo): <span id="smoothValue" class="value-display">0.3</span></label>
+      <input type="range" id="smoothSlider" min="0" max="1" step="0.05" value="0.3">
     </div>
   </div>
 
@@ -525,8 +544,8 @@
     </div>
   </div>
 
-  <!-- OVERLAY DE CALIBRAÇÃO -->
-  <div id="calibrationOverlay"><span>Calibrando... Siga os pontos com o olhar</span></div>
+  <!-- OVERLAY DE CALIBRAÇÃO (usado para mensagens) -->
+  <div id="calibrationOverlay"><span class="calib-msg">Calibrando... Siga os pontos com o olhar e clique neles.</span></div>
 
   <!-- ÁUDIO DE FEEDBACK -->
   <audio id="beepSound" src="https://www.soundjay.com/button/beep-07.wav"></audio>
@@ -565,9 +584,10 @@
     const backBody = document.getElementById('backBody');
     const closeBodyMapBtn = document.getElementById('closeBodyMapBtn');
     const calibrationOverlay = document.getElementById('calibrationOverlay');
+    const eyeCursor = document.getElementById('eyeCursor');
 
     // ==========================================
-    // LAYOUTS DO TECLADO
+    // LAYOUTS DO TECLADO (mesmo de antes)
     // ==========================================
     const layouts = {
       "QWERTY": [
@@ -594,7 +614,7 @@
     const wordSuggestions = ["Eu", "quero", "comer", "beber", "dormir", "brincar", "jogar", "aprender", "correr", "obrigado"];
 
     // ==========================================
-    // CATEGORIAS (IMAGENS E FRASES)
+    // CATEGORIAS (IMAGENS E FRASES) - mesmo de antes
     // ==========================================
     const categories = {
       chamar: [
@@ -687,7 +707,7 @@
     };
 
     // ==========================================
-    // FUNÇÕES DO TECLADO E SUGESTÕES
+    // FUNÇÕES DO TECLADO E SUGESTÕES (mesmo)
     // ==========================================
     function renderAlphabetKeyboard() {
       alphabetKeyboard.innerHTML = "";
@@ -739,7 +759,6 @@
     }
     renderKeyboard();
 
-    // Teclas especiais
     document.getElementById('backspaceKey')?.addEventListener('click', () => {
       playFeedback();
       displayField.value = displayField.value.slice(0, -1);
@@ -802,7 +821,7 @@
     }
 
     // ==========================================
-    // EVENTOS DA SIDEBAR E CONTROLES
+    // EVENTOS DA SIDEBAR E CONTROLES (mesmo)
     // ==========================================
     layoutSelect.addEventListener('change', renderKeyboard);
     themeToggle.addEventListener('click', () => document.body.classList.toggle('dark'));
@@ -855,7 +874,7 @@
     closeSidebarBtn.addEventListener('click', () => sidebar.classList.remove('open'));
 
     // ==========================================
-    // CATEGORIAS
+    // CATEGORIAS (mesmo)
     // ==========================================
     function renderCategoryImages(category) {
       categoryContainer.style.display = "none";
@@ -893,7 +912,7 @@
     });
 
     // ==========================================
-    // MAPEAMENTO CORPORAL
+    // MAPEAMENTO CORPORAL (mesmo)
     // ==========================================
     function openBodyMap() {
       document.querySelector('.main-content').style.display = "none";
@@ -922,7 +941,7 @@
     closeBodyMapBtn.addEventListener('click', closeBodyMap);
 
     // ==========================================
-    // AJUSTE DE TAMANHO DOS BOTÕES
+    // AJUSTE DE TAMANHO DOS BOTÕES (mesmo)
     // ==========================================
     function updateButtonSizes(delta) {
       const root = document.documentElement;
@@ -944,446 +963,365 @@
     decSizeBtn.addEventListener('click', () => updateButtonSizes(-10));
 
     // ==========================================
-    // LOGOUT (será sobrescrito pelo módulo Firebase)
+    // LOGOUT (placeholder)
     // ==========================================
-    window.logout = function() {};
+    window.logout = function() { alert('Logout realizado (simulação).'); };
 
-// ==========================================
-// EYE TRACKING (WebGazer) - VERSÃO ESTÁVEL
-// ==========================================
-(function() {
-  // ==========================================================
-  // REDIRECIONAMENTO DOS ARQUIVOS DO MEDIAPIPE (FaceMesh)
-  // ==========================================================
-  const MEDIAPIPE_CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/';
-  function redirectIfMediapipeAsset(url) {
-    if (typeof url === 'string' && url.indexOf('/mediapipe/face_mesh/') !== -1) {
-      const filename = url.substring(url.lastIndexOf('/') + 1);
-      return MEDIAPIPE_CDN_BASE + filename;
-    }
-    return url;
-  }
+    // ============================================================
+    // EYE TRACKING MELHORADO (com calibração nativa + suavização)
+    // ============================================================
+    (function() {
+      // ---- CONFIGURAÇÕES ----
+      let DWELL_TIME = 1200;
+      let SNAP_MARGIN = 60;
+      let SMOOTH_FACTOR = 0.3;
+      let eyeTrackingActive = false;
+      let webgazerLoaded = false;
+      let webgazerStarted = false;
+      let calibrationInProgress = false;
+      const CLICK_COOLDOWN = 500;
+      let lastClickTime = 0;
 
-  try {
-    const scriptSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
-    if (scriptSrcDescriptor && scriptSrcDescriptor.set) {
-      Object.defineProperty(HTMLScriptElement.prototype, 'src', {
-        configurable: true,
-        enumerable: scriptSrcDescriptor.enumerable,
-        get: function() { return scriptSrcDescriptor.get.call(this); },
-        set: function(value) { scriptSrcDescriptor.set.call(this, redirectIfMediapipeAsset(value)); }
-      });
-    }
-  } catch (e) {}
+      // ---- Estado do dwell ----
+      let dwellTarget = null;
+      let dwellAccumulated = 0;
+      let dwellLastTimestamp = 0;
+      let isDwelling = false;
+      let gazeFocusEl = null;
 
-  try {
-    const origXHROpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-      return origXHROpen.call(this, method, redirectIfMediapipeAsset(url), ...rest);
-    };
-  } catch (e) {}
+      // ---- Suavização ----
+      let smoothX = null, smoothY = null;
 
-  try {
-    const origFetch = window.fetch.bind(window);
-    window.fetch = function(input, init) {
-      if (typeof input === 'string') {
-        input = redirectIfMediapipeAsset(input);
-      } else if (input && input.url) {
-        input = new Request(redirectIfMediapipeAsset(input.url), input);
+      // ---- Elementos ----
+      const eyeCursor = document.getElementById('eyeCursor');
+      const calibrationOverlay = document.getElementById('calibrationOverlay');
+
+      // ---- Load WebGazer ----
+      function loadWebGazer() {
+        return new Promise((resolve, reject) => {
+          let tries = 0;
+          const maxTries = 100;
+          const check = () => {
+            if (typeof webgazer !== 'undefined') {
+              webgazerLoaded = true;
+              resolve();
+              return;
+            }
+            tries++;
+            if (tries >= maxTries) {
+              reject(new Error('WebGazer não carregou a tempo.'));
+              return;
+            }
+            setTimeout(check, 100);
+          };
+          check();
+        });
       }
-      return origFetch(input, init);
-    };
-  } catch (e) {}
-})();
 
-(function() {
-  let eyeTrackingActive = false;
-  let DWELL_TIME = 1200;
-  const eyeCursor = document.getElementById('eyeCursor');
-  let calibrationInProgress = false;
-  let webgazerLoaded = false;
-  let webgazerStarted = false;
-  const CLICKS_PER_DOT = 5;
-  const CLICK_COOLDOWN = 500; // ms após um clique para evitar múltiplos
+      function ensureWebGazerBegun() {
+        if (webgazerStarted) return Promise.resolve();
+        return webgazer.begin().then(() => {
+          webgazerStarted = true;
+          webgazer.showPredictionPoints(false);
+          webgazer.params.saveDataAcrossSessions = true; // persiste calibração
+        });
+      }
 
-  // ---- Estado do dwell ----
-  let dwellTarget = null;        // elemento alvo atual
-  let dwellAccumulated = 0;      // tempo acumulado em ms
-  let dwellLastTimestamp = 0;    // timestamp do último frame válido
-  let isDwelling = false;        // se está no processo de dwell (feedback visual)
-  let lastClickTime = 0;         // timestamp do último clique para cooldown
-
-  // ---- Funções auxiliares ----
-  function loadWebGazer() {
-    return new Promise((resolve, reject) => {
-      let tries = 0;
-      const maxTries = 100;
-      const check = () => {
-        if (typeof webgazer !== 'undefined') {
-          webgazerLoaded = true;
-          resolve();
-          return;
+      // ---- Suavização exponencial ----
+      function filterGaze(rawX, rawY) {
+        if (smoothX === null || smoothY === null) {
+          smoothX = rawX;
+          smoothY = rawY;
+        } else {
+          smoothX = smoothX + SMOOTH_FACTOR * (rawX - smoothX);
+          smoothY = smoothY + SMOOTH_FACTOR * (rawY - smoothY);
         }
-        tries++;
-        if (tries >= maxTries) {
-          reject(new Error('WebGazer não carregou a tempo.'));
-          return;
-        }
-        setTimeout(check, 100);
-      };
-      check();
-    });
-  }
-
-  function ensureWebGazerBegun() {
-    if (webgazerStarted) return Promise.resolve();
-    return webgazer.begin().then(() => {
-      webgazerStarted = true;
-      webgazer.showPredictionPoints(false);
-      webgazer.params.saveDataAcrossSessions = false;
-    });
-  }
-
-  // ---- Sem suavização: usamos os dados crus, mas com um limiar de salto ----
-  let lastRawX = null, lastRawY = null;
-  const JUMP_THRESHOLD = 300; // px
-
-  function filterGaze(rawX, rawY) {
-    if (lastRawX === null || lastRawY === null) {
-      lastRawX = rawX;
-      lastRawY = rawY;
-      return { x: rawX, y: rawY };
-    }
-    const jump = Math.hypot(rawX - lastRawX, rawY - lastRawY);
-    if (jump > JUMP_THRESHOLD) {
-      // Ignora este frame (provavelmente piscada ou falha)
-      return { x: lastRawX, y: lastRawY };
-    }
-    lastRawX = rawX;
-    lastRawY = rawY;
-    return { x: rawX, y: rawY };
-  }
-
-  // ---- "Ímã" de alvo clicável ----
-  const CLICKABLE_SELECTOR = '.key, .special-key, .img-button, .suggestion, .back-button, #readAloudBtn, .body-map-header button';
-  const SNAP_MARGIN = 60; // aumentado para maior facilidade
-
-  function findNearestClickable(x, y) {
-    const candidates = document.querySelectorAll(CLICKABLE_SELECTOR);
-    let best = null;
-    let bestDist = Infinity;
-    candidates.forEach(el => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
-      const withinX = x >= rect.left - SNAP_MARGIN && x <= rect.right + SNAP_MARGIN;
-      const withinY = y >= rect.top - SNAP_MARGIN && y <= rect.bottom + SNAP_MARGIN;
-      if (withinX && withinY) {
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const dist = Math.hypot(x - cx, y - cy);
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = el;
-        }
+        return { x: smoothX, y: smoothY };
       }
-    });
-    return best;
-  }
 
-  // ---- Atualiza o foco visual (borda amarela) ----
-  let gazeFocusEl = null;
-  function setGazeFocus(el) {
-    if (gazeFocusEl === el) return;
-    if (gazeFocusEl) {
-      gazeFocusEl.classList.remove('gaze-focus');
-    }
-    gazeFocusEl = el;
-    if (gazeFocusEl) {
-      gazeFocusEl.classList.add('gaze-focus');
-    }
-  }
-
-  // ---- Feedback visual de dwell em andamento ----
-  function setDwelling(active) {
-    if (isDwelling === active) return;
-    isDwelling = active;
-    document.querySelectorAll('.gaze-dwelling').forEach(el => el.classList.remove('gaze-dwelling'));
-    if (active && dwellTarget) {
-      dwellTarget.classList.add('gaze-dwelling');
-    }
-  }
-
-  // ---- Reseta o estado do dwell ----
-  function resetDwell() {
-    dwellTarget = null;
-    dwellAccumulated = 0;
-    dwellLastTimestamp = 0;
-    setDwelling(false);
-  }
-
-  // ---- Executa o clique (com cooldown) ----
-  function performClick(element) {
-    const now = performance.now();
-    if (now - lastClickTime < CLICK_COOLDOWN) {
-      return; // cooldown ativo
-    }
-    lastClickTime = now;
-    element.click();
-    playFeedback();
-    element.style.transition = 'background 0.1s';
-    element.style.background = 'rgba(255,255,0,0.5)';
-    setTimeout(() => { element.style.background = ''; }, 200);
-    setGazeFocus(null);
-    resetDwell();
-  }
-
-  // ---- Atualiza o dwell (chamado a cada frame) ----
-  function updateDwell(target, timestamp) {
-    // Verifica se o target é clicável e não está em áreas proibidas
-    if (!target || target.id === 'eyeCursor' ||
-        target.closest('.sidebar') ||
-        target.closest('.body-map-container') ||
-        target.closest('.footer') ||
-        target.closest('#calibrationOverlay') ||
-        target.id === 'display' ||
-        target.closest('.suggestions')) {
-      resetDwell();
-      return;
-    }
-
-    // Se o alvo mudou, reseta o estado
-    if (target !== dwellTarget) {
-      resetDwell();
-      dwellTarget = target;
-      dwellAccumulated = 0;
-      dwellLastTimestamp = timestamp;
-      setDwelling(true);
-      return;
-    }
-
-    // Mesmo alvo: acumula tempo
-    if (dwellLastTimestamp > 0) {
-      const delta = timestamp - dwellLastTimestamp;
-      // Só acumula se o delta for razoável (entre 5ms e 100ms)
-      if (delta > 5 && delta < 100) {
-        dwellAccumulated += delta;
+      // ---- Ímã de alvo ----
+      const CLICKABLE_SELECTOR = '.key, .special-key, .img-button, .suggestion, .back-button, #readAloudBtn, .body-map-header button';
+      function findNearestClickable(x, y) {
+        const candidates = document.querySelectorAll(CLICKABLE_SELECTOR);
+        let best = null;
+        let bestDist = Infinity;
+        candidates.forEach(el => {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) return;
+          const withinX = x >= rect.left - SNAP_MARGIN && x <= rect.right + SNAP_MARGIN;
+          const withinY = y >= rect.top - SNAP_MARGIN && y <= rect.bottom + SNAP_MARGIN;
+          if (withinX && withinY) {
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const dist = Math.hypot(x - cx, y - cy);
+            if (dist < bestDist) {
+              bestDist = dist;
+              best = el;
+            }
+          }
+        });
+        return best;
       }
-    }
-    dwellLastTimestamp = timestamp;
 
-    // Se acumulou o suficiente, executa o clique
-    if (dwellAccumulated >= DWELL_TIME) {
-      performClick(dwellTarget);
-    }
-  }
-
-  // ---- Listener de gaze ----
-  function setupGazeListener() {
-    if (typeof webgazer === 'undefined') return;
-    lastRawX = null;
-    lastRawY = null;
-    setGazeFocus(null);
-    resetDwell();
-
-    webgazer.setGazeListener((data) => {
-      if (!data || !eyeTrackingActive) {
-        resetDwell();
-        return;
+      // ---- Foco visual ----
+      function setGazeFocus(el) {
+        if (gazeFocusEl === el) return;
+        if (gazeFocusEl) gazeFocusEl.classList.remove('gaze-focus');
+        gazeFocusEl = el;
+        if (gazeFocusEl) gazeFocusEl.classList.add('gaze-focus');
       }
-      const { x, y } = filterGaze(data.x, data.y);
-      eyeCursor.style.left = x + 'px';
-      eyeCursor.style.top = y + 'px';
 
-      const target = findNearestClickable(x, y);
-      setGazeFocus(target);
+      function setDwelling(active) {
+        if (isDwelling === active) return;
+        isDwelling = active;
+        document.querySelectorAll('.gaze-dwelling').forEach(el => el.classList.remove('gaze-dwelling'));
+        if (active && dwellTarget) dwellTarget.classList.add('gaze-dwelling');
+      }
 
-      if (target) {
-        // Usa performance.now() para maior precisão
+      function resetDwell() {
+        dwellTarget = null;
+        dwellAccumulated = 0;
+        dwellLastTimestamp = 0;
+        setDwelling(false);
+      }
+
+      function performClick(element) {
         const now = performance.now();
-        updateDwell(target, now);
-      } else {
+        if (now - lastClickTime < CLICK_COOLDOWN) return;
+        lastClickTime = now;
+        element.click();
+        playFeedback();
+        element.style.transition = 'background 0.1s';
+        element.style.background = 'rgba(255,255,0,0.5)';
+        setTimeout(() => { element.style.background = ''; }, 200);
+        setGazeFocus(null);
         resetDwell();
       }
-    });
-  }
 
-  // ---- Inicia o rastreamento ----
-  function startEyeTracking() {
-    if (eyeTrackingActive) return;
-    if (!webgazerLoaded) {
-      alert('WebGazer ainda não carregou. Aguarde alguns segundos e tente novamente.');
-      return;
-    }
-    if (calibrationInProgress) return;
+      function updateDwell(target, timestamp) {
+        if (!target || target.id === 'eyeCursor' ||
+            target.closest('.sidebar') ||
+            target.closest('.body-map-container') ||
+            target.closest('.footer') ||
+            target.closest('#calibrationOverlay') ||
+            target.id === 'display' ||
+            target.closest('.suggestions')) {
+          resetDwell();
+          return;
+        }
+        if (target !== dwellTarget) {
+          resetDwell();
+          dwellTarget = target;
+          dwellAccumulated = 0;
+          dwellLastTimestamp = timestamp;
+          setDwelling(true);
+          return;
+        }
+        if (dwellLastTimestamp > 0) {
+          const delta = timestamp - dwellLastTimestamp;
+          if (delta > 5 && delta < 100) dwellAccumulated += delta;
+        }
+        dwellLastTimestamp = timestamp;
+        if (dwellAccumulated >= DWELL_TIME) {
+          performClick(dwellTarget);
+        }
+      }
 
-    ensureWebGazerBegun()
-      .then(() => {
-        webgazer.showVideoPreview(false);
-        webgazer.showFaceOverlay(false);
-        webgazer.showFaceFeedbackBox(false);
-        setupGazeListener();
-        eyeTrackingActive = true;
-        eyeCursor.style.display = 'block';
-        localStorage.setItem('eyeTracking', 'true');
-        console.log('Eye tracking iniciado.');
-      })
-      .catch(err => {
-        console.error('Erro ao iniciar WebGazer:', err);
-        alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.');
-      });
-  }
+      // ---- Listener de gaze ----
+      function setupGazeListener() {
+        if (typeof webgazer === 'undefined') return;
+        smoothX = smoothY = null;
+        setGazeFocus(null);
+        resetDwell();
 
-  // ---- Para o rastreamento ----
-  function stopEyeTracking() {
-    if (!eyeTrackingActive) return;
-    eyeTrackingActive = false;
-    eyeCursor.style.display = 'none';
-    setGazeFocus(null);
-    resetDwell();
-    if (typeof webgazer !== 'undefined') {
-      webgazer.setGazeListener(function() {});
-    }
-    localStorage.setItem('eyeTracking', 'false');
-    console.log('Eye tracking parado.');
-  }
+        webgazer.setGazeListener((data) => {
+          if (!data || !eyeTrackingActive) {
+            resetDwell();
+            return;
+          }
+          const { x, y } = filterGaze(data.x, data.y);
+          eyeCursor.style.left = x + 'px';
+          eyeCursor.style.top = y + 'px';
 
-  // ---- CALIBRAÇÃO ----
-  function calibrateEye() {
-    if (!webgazerLoaded) {
-      alert('WebGazer ainda não foi carregado. Aguarde e tente novamente.');
-      return;
-    }
-    if (calibrationInProgress) return;
-    calibrationInProgress = true;
+          const target = findNearestClickable(x, y);
+          setGazeFocus(target);
 
-    eyeTrackingActive = false;
-    eyeCursor.style.display = 'none';
-    resetDwell();
+          if (target) {
+            const now = performance.now();
+            updateDwell(target, now);
+          } else {
+            resetDwell();
+          }
+        });
+      }
 
-    ensureWebGazerBegun()
-      .then(() => {
-        webgazer.showVideoPreview(true);
-        webgazer.showFaceOverlay(true);
-        webgazer.showFaceFeedbackBox(true);
+      // ---- Iniciar / Parar ----
+      function startEyeTracking() {
+        if (eyeTrackingActive) return;
+        if (!webgazerLoaded) {
+          alert('WebGazer ainda não carregou. Aguarde e tente novamente.');
+          return;
+        }
+        if (calibrationInProgress) return;
+
+        ensureWebGazerBegun()
+          .then(() => {
+            webgazer.showVideoPreview(false);
+            webgazer.showFaceOverlay(false);
+            webgazer.showFaceFeedbackBox(false);
+            setupGazeListener();
+            eyeTrackingActive = true;
+            eyeCursor.style.display = 'block';
+            localStorage.setItem('eyeTracking', 'true');
+            console.log('Eye tracking iniciado.');
+          })
+          .catch(err => {
+            console.error('Erro ao iniciar WebGazer:', err);
+            alert('Não foi possível acessar a câmera. Verifique as permissões.');
+          });
+      }
+
+      function stopEyeTracking() {
+        if (!eyeTrackingActive) return;
+        eyeTrackingActive = false;
+        eyeCursor.style.display = 'none';
+        setGazeFocus(null);
+        resetDwell();
+        if (typeof webgazer !== 'undefined') {
+          webgazer.setGazeListener(function() {});
+        }
+        localStorage.setItem('eyeTracking', 'false');
+        console.log('Eye tracking parado.');
+      }
+
+      // ---- CALIBRAÇÃO NATIVA COM GRADE CONFIGURÁVEL ----
+      function calibrateEye() {
+        if (!webgazerLoaded) {
+          alert('WebGazer ainda não foi carregado. Aguarde e tente novamente.');
+          return;
+        }
+        if (calibrationInProgress) return;
+        calibrationInProgress = true;
+
+        // Para o tracking durante a calibração
+        if (eyeTrackingActive) stopEyeTracking();
+
+        ensureWebGazerBegun()
+          .then(() => {
+            const gridSize = parseInt(document.getElementById('gridSelect').value);
+            // Configura o número de pontos
+            webgazer.setCalibrationPoints(gridSize, gridSize);
+            webgazer.showVideoPreview(true);
+            webgazer.showFaceOverlay(true);
+            webgazer.showFaceFeedbackBox(true);
+
+            // Exibe overlay com instruções
+            calibrationOverlay.style.display = 'flex';
+            calibrationOverlay.innerHTML = `<span class="calib-msg">Calibrando (${gridSize}×${gridSize}). Clique em cada ponto vermelho.</span>`;
+            calibrationOverlay.style.pointerEvents = 'none'; // para não atrapalhar cliques
+
+            // Inicia calibração nativa
+            webgazer.calibrate()
+              .then(() => {
+                // Calibração concluída
+                calibrationOverlay.style.display = 'none';
+                webgazer.showVideoPreview(false);
+                webgazer.showFaceOverlay(false);
+                webgazer.showFaceFeedbackBox(false);
+                calibrationInProgress = false;
+                // Reativa o tracking se estava ativo antes (ou inicia)
+                startEyeTracking();
+                playFeedback();
+                console.log('Calibração concluída com sucesso.');
+                alert('Calibração concluída!');
+              })
+              .catch(err => {
+                console.error('Erro na calibração:', err);
+                calibrationOverlay.style.display = 'none';
+                calibrationInProgress = false;
+                alert('Falha na calibração. Tente novamente.');
+              });
+          })
+          .catch(err => {
+            console.error('Erro ao iniciar WebGazer para calibração:', err);
+            calibrationInProgress = false;
+            alert('Não foi possível acessar a câmera.');
+          });
+      }
+
+      // ---- Resetar calibração ----
+      function resetCalibration() {
+        if (typeof webgazer === 'undefined') return;
         webgazer.clearData();
-        buildCalibrationUI();
-      })
-      .catch(err => {
-        console.error('Erro ao iniciar WebGazer:', err);
-        alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.');
-        calibrationInProgress = false;
-      });
-  }
+        localStorage.removeItem('webgazerGlobalData');
+        alert('Calibração resetada. Reinicie o rastreamento ocular.');
+        if (eyeTrackingActive) stopEyeTracking();
+      }
 
-  function buildCalibrationUI() {
-    calibrationOverlay.innerHTML = '';
-    calibrationOverlay.style.display = 'flex';
-    calibrationOverlay.style.pointerEvents = 'auto';
+      // ---- EXPÕE FUNÇÕES GLOBALMENTE ----
+      window.startEyeTracking = startEyeTracking;
+      window.stopEyeTracking = stopEyeTracking;
+      window.calibrateEye = calibrateEye;
+      window.resetCalibration = resetCalibration;
 
-    const instructions = document.createElement('div');
-    instructions.style.cssText = `
-      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.85); padding: 14px 26px; border-radius: 10px;
-      font-size: 0.55em; max-width: 90%; text-align: center; line-height: 1.4;
-    `;
-    instructions.textContent = `Olhe fixamente para cada ponto vermelho e clique nele ${CLICKS_PER_DOT} vezes. O ponto fica verde e some quando terminar.`;
-    calibrationOverlay.appendChild(instructions);
+      // ---- CONTROLES DA SIDEBAR ----
+      document.getElementById('startEyeBtn')?.addEventListener('click', startEyeTracking);
+      document.getElementById('stopEyeBtn')?.addEventListener('click', stopEyeTracking);
+      document.getElementById('calibrateEyeBtn')?.addEventListener('click', calibrateEye);
+      document.getElementById('resetCalibrationBtn')?.addEventListener('click', resetCalibration);
 
-    const positions = [
-      [5, 8], [50, 8], [95, 8],
-      [5, 50], [50, 50], [95, 50],
-      [5, 92], [50, 92], [95, 92]
-    ];
-    let dotsRemaining = positions.length;
+      // Sliders
+      const dwellSlider = document.getElementById('dwellSlider');
+      const dwellValue = document.getElementById('dwellValue');
+      if (dwellSlider) {
+        dwellSlider.addEventListener('input', function() {
+          DWELL_TIME = parseInt(this.value);
+          dwellValue.textContent = DWELL_TIME;
+        });
+      }
 
-    positions.forEach(([xPct, yPct]) => {
-      const dot = document.createElement('div');
-      let clicks = 0;
-      dot.style.cssText = `
-        position: absolute; left: ${xPct}%; top: ${yPct}%;
-        width: 34px; height: 34px; margin: -17px 0 0 -17px;
-        border-radius: 50%; background: #e63946; border: 3px solid #fff;
-        cursor: pointer; pointer-events: auto;
-        transition: background 0.2s, transform 0.15s, opacity 0.3s;
-        box-shadow: 0 0 10px rgba(0,0,0,0.6);
-      `;
-      dot.addEventListener('click', () => {
-        clicks++;
-        const ratio = Math.min(clicks / CLICKS_PER_DOT, 1);
-        const r = Math.round(230 * (1 - ratio) + 40 * ratio);
-        const g = Math.round(57 * (1 - ratio) + 200 * ratio);
-        dot.style.background = `rgb(${r}, ${g}, 60)`;
-        dot.style.transform = `scale(${1 - 0.5 * ratio})`;
-        if (clicks >= CLICKS_PER_DOT) {
-          dot.style.pointerEvents = 'none';
-          dot.style.opacity = '0';
-          dotsRemaining--;
-          if (dotsRemaining <= 0) finishCalibration();
+      const snapSlider = document.getElementById('snapMarginSlider');
+      const snapValue = document.getElementById('snapMarginValue');
+      if (snapSlider) {
+        snapSlider.addEventListener('input', function() {
+          SNAP_MARGIN = parseInt(this.value);
+          snapValue.textContent = SNAP_MARGIN;
+        });
+      }
+
+      const smoothSlider = document.getElementById('smoothSlider');
+      const smoothValue = document.getElementById('smoothValue');
+      if (smoothSlider) {
+        smoothSlider.addEventListener('input', function() {
+          SMOOTH_FACTOR = parseFloat(this.value);
+          smoothValue.textContent = SMOOTH_FACTOR.toFixed(2);
+        });
+      }
+
+      // ---- CARREGA O WEBGAZER NA INICIALIZAÇÃO ----
+      loadWebGazer()
+        .then(() => {
+          console.log('WebGazer carregado.');
+          // Restaura estado do tracking se estava ativo
+          if (localStorage.getItem('eyeTracking') === 'true') {
+            startEyeTracking();
+          }
+        })
+        .catch(err => {
+          console.error('Erro ao carregar WebGazer:', err);
+        });
+
+      // ---- DESLIGA AO SAIR ----
+      window.addEventListener('beforeunload', function() {
+        if (webgazerStarted && typeof webgazer !== 'undefined') {
+          webgazer.end();
         }
       });
-      calibrationOverlay.appendChild(dot);
-    });
-  }
-
-  function finishCalibration() {
-    calibrationOverlay.style.display = 'none';
-    calibrationOverlay.style.pointerEvents = 'none';
-    calibrationOverlay.innerHTML = '<span>Calibrando... Siga os pontos com o olhar</span>';
-
-    webgazer.showVideoPreview(false);
-    webgazer.showFaceOverlay(false);
-    webgazer.showFaceFeedbackBox(false);
-
-    setupGazeListener();
-    eyeTrackingActive = true;
-    eyeCursor.style.display = 'block';
-    localStorage.setItem('eyeTracking', 'true');
-    calibrationInProgress = false;
-    playFeedback();
-    console.log('Calibração concluída com sucesso.');
-  }
-
-  // ---- EXPÕE FUNÇÕES GLOBALMENTE ----
-  window.startEyeTracking = startEyeTracking;
-  window.stopEyeTracking = stopEyeTracking;
-  window.calibrateEye = calibrateEye;
-
-  // ---- SLIDER DE DWELL ----
-  const dwellSlider = document.getElementById('dwellSlider');
-  const dwellValue = document.getElementById('dwellValue');
-  if (dwellSlider) {
-    dwellSlider.addEventListener('input', function() {
-      DWELL_TIME = parseInt(this.value);
-      if (dwellValue) dwellValue.textContent = DWELL_TIME;
-    });
-  }
-
-  // ---- BOTÕES DA SIDEBAR ----
-  document.getElementById('startEyeBtn')?.addEventListener('click', startEyeTracking);
-  document.getElementById('stopEyeBtn')?.addEventListener('click', stopEyeTracking);
-  document.getElementById('calibrateEyeBtn')?.addEventListener('click', calibrateEye);
-
-  // ---- CARREGA O WEBGAZER NA INICIALIZAÇÃO ----
-  loadWebGazer()
-    .then(() => {
-      console.log('WebGazer carregado com sucesso.');
-    })
-    .catch(err => {
-      console.error('Erro ao carregar WebGazer:', err);
-      alert('Não foi possível carregar o WebGazer. Verifique sua conexão com a internet.');
-    });
-
-  // ---- DESLIGA AO SAIR ----
-  window.addEventListener('beforeunload', function() {
-    if (webgazerStarted && typeof webgazer !== 'undefined') {
-      webgazer.end();
-    }
-  });
-})();
+    })();
   </script>
 
   <footer class="footer">
-    <p>Rodrigo Cavalcante dos Santos - CREFITO 2 / 242633-F </p>
+    <p>Rodrigo Cavalcante dos Santos - CREFITO 2 / 242633-F</p>
   </footer>
 </body>
 </html>
