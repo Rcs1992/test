@@ -953,6 +953,12 @@
   //      iniciada uma vez; chamadas seguintes reaproveitam a sessão) ----
   function ensureWebGazerBegun() {
     if (webgazerStarted) return Promise.resolve();
+    // Usa o rastreador "clmtrackr" em vez do padrão (TFFacemesh/mediapipe).
+    // O rastreador padrão tenta baixar arquivos .wasm extras usando um caminho
+    // RELATIVO À PÁGINA (não ao domínio do webgazer.js), o que causa 404 quando
+    // o site está hospedado em outro domínio (ex: GitHub Pages). O clmtrackr
+    // não depende de nenhum arquivo externo, então evita esse problema.
+    webgazer.setTracker('clmtrackr');
     return webgazer.begin().then(() => {
       webgazerStarted = true;
       // Desliga o ponto de predição nativo do WebGazer: usamos nosso próprio
