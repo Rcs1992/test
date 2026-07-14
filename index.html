@@ -403,6 +403,12 @@
       padding: 20px 40px;
       border-radius: 12px;
     }
+    /* ===== FOCO DO OLHAR (ímã de alvo clicável) ===== */
+    .gaze-focus {
+      outline: 4px solid #FFD500 !important;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 8px rgba(255,213,0,0.35) !important;
+    }
   </style>
 </head>
 <body>
@@ -1047,23 +1053,89 @@
   }
 
   // ---- Suavização do olhar (reduz o tremor natural das predições) ----
-  let gazeBuffer = [];
-  const GAZE_SMOOTHING_WINDOW = 8; // quantas leituras recentes são usadas na média
+  // Média móvel exponencial (EMA): reage mais rápido que uma média simples,
+  // mas ainda filtra o ruído frame a frame.
+  let smoothX = null;
+  let smoothY = null;
+  const EMA_ALPHA = 0.25;
+  const OUTLIER_JUMP_PX = 250; // saltos maiores que isso (piscada, ruído) são ignorados
+
+  function smoothGaze(rawX, rawY) {
+    if (smoothX === null) {
+      smoothX = rawX;
+      smoothY = rawY;
+      return { x: smoothX, y: smoothY };
+    }
+    const jump = Math.hypot(rawX - smoothX, rawY - smoothY);
+    if (jump > OUTLIER_JUMP_PX) {
+      // provável piscada ou falha momentânea de rastreamento: ignora este frame
+      return { x: smoothX, y: smoothY };
+    }
+    smoothX += EMA_ALPHA * (rawX - smoothX);
+    smoothY += EMA_ALPHA * (rawY - smoothY);
+    return { x: smoothX, y: smoothY };
+  }
+
+  // ---- "Ímã" de alvo clicável ----
+  // Em vez de exigir que o olhar acerte o pixel exato de um botão, procuramos
+  // o elemento clicável mais próximo dentro de uma margem de tolerância. Isso
+  // compensa o erro típico de alguns dezenas de pixels que o WebGazer ainda
+  // tem mesmo depois de calibrado.
+  const CLICKABLE_SELECTOR = '.key, .special-key, .img-button, .suggestion, .back-button, #readAloudBtn, .body-map-header button';
+  const SNAP_MARGIN = 30; // px de tolerância ao redor de cada alvo
+  let gazeFocusEl = null;
+
+  function findNearestClickable(x, y) {
+    const candidates = document.querySelectorAll(CLICKABLE_SELECTOR);
+    let best = null;
+    let bestDist = Infinity;
+    candidates.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return; // invisível/oculto
+      const withinX = x >= rect.left - SNAP_MARGIN && x <= rect.right + SNAP_MARGIN;
+      const withinY = y >= rect.top - SNAP_MARGIN && y <= rect.bottom + SNAP_MARGIN;
+      if (withinX && withinY) {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dist = Math.hypot(x - cx, y - cy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = el;
+        }
+      }
+    });
+    return best;
+  }
+
+  function setGazeFocus(el) {
+    if (gazeFocusEl === el) return;
+    if (gazeFocusEl) gazeFocusEl.classList.remove('gaze-focus');
+    gazeFocusEl = el;
+    if (gazeFocusEl) gazeFocusEl.classList.add('gaze-focus');
+  }
 
   // ---- Define o listener de gaze (usado após iniciar/calibrar) ----
   function setupGazeListener() {
     if (typeof webgazer === 'undefined') return;
-    gazeBuffer = [];
+    smoothX = null;
+    smoothY = null;
+    setGazeFocus(null);
     webgazer.setGazeListener((data) => {
       if (data && eyeTrackingActive) {
-        gazeBuffer.push({ x: data.x, y: data.y });
-        if (gazeBuffer.length > GAZE_SMOOTHING_WINDOW) gazeBuffer.shift();
-        const avgX = gazeBuffer.reduce((sum, p) => sum + p.x, 0) / gazeBuffer.length;
-        const avgY = gazeBuffer.reduce((sum, p) => sum + p.y, 0) / gazeBuffer.length;
-        eyeCursor.style.left = avgX + 'px';
-        eyeCursor.style.top = avgY + 'px';
-        const element = document.elementFromPoint(avgX, avgY);
-        if (element) handleDwell(element);
+        const { x, y } = smoothGaze(data.x, data.y);
+        eyeCursor.style.left = x + 'px';
+        eyeCursor.style.top = y + 'px';
+        const target = findNearestClickable(x, y);
+        setGazeFocus(target);
+        if (target) {
+          handleDwell(target);
+        } else {
+          // olhar fora de qualquer alvo clicável: cancela o clique em andamento
+          clearTimeout(dwellTimer);
+          dwellTimer = null;
+          pendingElement = null;
+          pendingCount = 0;
+        }
       }
     });
   }
@@ -1074,7 +1146,7 @@
   // consistentemente para outro elemento por vários frames seguidos.
   let pendingElement = null;
   let pendingCount = 0;
-  const SWITCH_THRESHOLD = 4; // frames seguidos apontando para o novo elemento antes de trocar o alvo
+  const SWITCH_THRESHOLD = 3; // frames seguidos apontando para o novo elemento antes de trocar o alvo
 
   function handleDwell(element) {
     if (!element) return;
@@ -1120,6 +1192,7 @@
       element.style.background = 'rgba(255,255,0,0.5)';
       setTimeout(() => { element.style.background = ''; }, 200);
       dwellTimer = null;
+      setGazeFocus(null);
     }, DWELL_TIME);
     dwellTimer._element = element;
   }
@@ -1155,6 +1228,7 @@
     if (!eyeTrackingActive) return;
     eyeTrackingActive = false;
     eyeCursor.style.display = 'none';
+    setGazeFocus(null);
     if (typeof webgazer !== 'undefined') {
       webgazer.setGazeListener(function() {});
     }
