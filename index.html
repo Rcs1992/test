@@ -918,10 +918,9 @@
     window.logout = function() {};
 
 // ==========================================
-// EYE TRACKING (WebGazer) - CALIBRAÇÃO MANUAL
+// EYE TRACKING (WebGazer) - COM CLMTRACKR
 // ==========================================
 (function() {
-  // ---- Estado global ----
   let eyeTrackingActive = false;
   let dwellTimer = null;
   let DWELL_TIME = 1200;
@@ -950,18 +949,24 @@
     });
   }
 
-  // ---- Garante que o WebGazer está carregado ----
-  function ensureWebGazer() {
-    if (!webgazerReady) {
-      return loadWebGazer();
-    }
-    return Promise.resolve();
+  // ---- Inicializa o WebGazer com as configurações corretas ----
+  function initWebGazer() {
+    if (typeof webgazer === 'undefined') return Promise.reject('WebGazer não carregado.');
+    
+    // Usa o tracker CLMtrackr (mais leve e não depende do MediaPipe)
+    webgazer.setTracker('clmtrackr');
+    // Define o tipo de regressão (ridge é o padrão)
+    webgazer.setRegression('ridge');
+    // Salva dados entre sessões
+    webgazer.saveDataAcrossSessions(true);
+    
+    return webgazer.begin();
   }
 
-  // ---- Define o listener de gaze (usado após calibração) ----
+  // ---- Define o listener de gaze ----
   function setupGazeListener() {
     if (typeof webgazer === 'undefined') return;
-    webgazer.setGazeListener(null); // remove listeners antigos
+    webgazer.setGazeListener(null);
     webgazer.setGazeListener((data) => {
       if (data && eyeTrackingActive) {
         eyeCursor.style.left = data.x + 'px';
@@ -975,7 +980,6 @@
   // ---- Dwell (clique por tempo) ----
   function handleDwell(element) {
     if (!element) return;
-    // Ignora elementos que não devem ser clicados
     if (element.id === 'eyeCursor' ||
         element.closest('.sidebar') ||
         element.closest('.body-map-container') ||
@@ -1015,17 +1019,27 @@
       webgazer.clearData();
     }
 
-    setupGazeListener();
-    webgazer.begin()
-      .then(() => {
-        eyeTrackingActive = true;
-        eyeCursor.style.display = 'block';
-        localStorage.setItem('eyeTracking', 'true');
-        console.log('Eye tracking iniciado.');
+    // Verifica se a câmera está disponível antes de iniciar
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        stream.getTracks().forEach(track => track.stop()); // libera a stream de teste
+        // Inicia o WebGazer
+        initWebGazer()
+          .then(() => {
+            setupGazeListener();
+            eyeTrackingActive = true;
+            eyeCursor.style.display = 'block';
+            localStorage.setItem('eyeTracking', 'true');
+            console.log('Eye tracking iniciado.');
+          })
+          .catch(err => {
+            console.error('Erro ao iniciar WebGazer:', err);
+            alert('Não foi possível iniciar o rastreamento. Verifique a câmera.');
+          });
       })
       .catch(err => {
-        console.error('Erro ao iniciar WebGazer:', err);
-        alert('Não foi possível acessar a câmera. Verifique as permissões.');
+        console.error('Câmera indisponível:', err);
+        alert('Câmera não encontrada ou acesso negado. Verifique as permissões.');
       });
   }
 
@@ -1044,9 +1058,8 @@
     console.log('Eye tracking parado.');
   }
 
-  // ---- CRIA OS PONTOS DE CALIBRAÇÃO (9 pontos) ----
+  // ---- CRIA OS PONTOS DE CALIBRAÇÃO ----
   function createCalibrationPoints() {
-    // Remove pontos antigos, se houver
     document.querySelectorAll('.calibration-point').forEach(el => el.remove());
 
     const points = [
@@ -1075,7 +1088,7 @@
         cursor: pointer;
         transform: translate(-50%, -50%);
         box-shadow: 0 0 15px rgba(0,0,0,0.5);
-        transition: background 0.3s;
+        transition: background 0.3s, transform 0.3s;
       `;
       btn.dataset.index = index;
       btn.addEventListener('click', calibrationClickHandler);
@@ -1084,27 +1097,22 @@
     });
   }
 
-  // ---- Handler de clique nos pontos de calibração ----
+  // ---- Handler de clique nos pontos ----
   function calibrationClickHandler(e) {
     const btn = e.currentTarget;
     const index = parseInt(btn.dataset.index);
 
-    // Registra a posição do clique para calibração
     webgazer.recordScreenPosition(e.clientX, e.clientY);
 
-    // Feedback visual
     btn.style.background = 'rgba(0, 255, 0, 0.7)';
     btn.textContent = '✓';
     btn.disabled = true;
 
-    // Avança para o próximo ponto
     currentCalibrationIndex++;
 
-    // Verifica se todos os pontos foram clicados
     if (currentCalibrationIndex >= calibrationPoints.length) {
       finishCalibration();
     } else {
-      // Destaca o próximo ponto (opcional)
       const nextBtn = calibrationPoints[currentCalibrationIndex];
       if (nextBtn) {
         nextBtn.style.background = 'rgba(0, 200, 255, 0.8)';
@@ -1115,23 +1123,20 @@
 
   // ---- Finaliza a calibração ----
   function finishCalibration() {
-    // Remove todos os pontos
     document.querySelectorAll('.calibration-point').forEach(el => el.remove());
     calibrationPoints = [];
     currentCalibrationIndex = 0;
     isCalibrating = false;
 
-    // Remove a mensagem de instrução, se existir
     const msg = document.getElementById('calibrationMessage');
     if (msg) msg.remove();
 
-    // Reconfigura o listener e ativa o tracking
     setupGazeListener();
     eyeTrackingActive = true;
     eyeCursor.style.display = 'block';
     localStorage.setItem('eyeTracking', 'true');
     playFeedback();
-    console.log('✅ Calibração concluída com sucesso.');
+    console.log('✅ Calibração concluída.');
     alert('Calibração concluída! O rastreamento ocular está ativo.');
   }
 
@@ -1143,7 +1148,6 @@
     }
     if (isCalibrating) return;
     if (eyeTrackingActive) {
-      // Para o tracking atual
       webgazer.end();
       eyeTrackingActive = false;
       eyeCursor.style.display = 'none';
@@ -1152,14 +1156,11 @@
     isCalibrating = true;
     currentCalibrationIndex = 0;
 
-    // Limpa dados antigos
     webgazer.clearData();
     webgazer.setGazeListener(null);
 
-    // Cria os 9 pontos
     createCalibrationPoints();
 
-    // Mostra uma mensagem de instrução
     const msg = document.createElement('div');
     msg.id = 'calibrationMessage';
     msg.style.cssText = `
@@ -1172,13 +1173,13 @@
     msg.textContent = '🔵 Clique nos 9 pontos vermelhos na ordem indicada.';
     document.body.appendChild(msg);
 
-    // Destaca o primeiro ponto
     if (calibrationPoints.length > 0) {
       calibrationPoints[0].style.background = 'rgba(0, 200, 255, 0.8)';
       calibrationPoints[0].style.transform = 'translate(-50%, -50%) scale(1.2)';
     }
 
-    // Inicia o WebGazer (se não estiver rodando)
+    // Inicia o WebGazer (se não estiver rodando) com clmtrackr
+    webgazer.setTracker('clmtrackr');
     webgazer.begin()
       .then(() => {
         console.log('WebGazer iniciado para calibração.');
@@ -1186,12 +1187,10 @@
       .catch(err => {
         console.error('Erro ao iniciar WebGazer:', err);
         alert('Não foi possível acessar a câmera. Verifique as permissões.');
-        // Limpa os pontos e cancela calibração
         document.querySelectorAll('.calibration-point').forEach(el => el.remove());
         const msgEl = document.getElementById('calibrationMessage');
         if (msgEl) msgEl.remove();
         isCalibrating = false;
-        // Tenta reativar se estava ativo antes
         if (localStorage.getItem('eyeTracking') === 'true') {
           startEyeTracking(false);
         }
@@ -1206,7 +1205,6 @@
           document.querySelectorAll('.calibration-point').forEach(el => el.remove());
           if (msgEl) msgEl.remove();
           isCalibrating = false;
-          // Reativa o tracking se já estava ativo
           if (localStorage.getItem('eyeTracking') === 'true') {
             startEyeTracking(false);
           }
@@ -1215,7 +1213,7 @@
     }, 60000);
   }
 
-  // ---- EXPÕE FUNÇÕES GLOBALMENTE ----
+  // ---- EXPÕE FUNÇÕES ----
   window.startEyeTracking = function() { startEyeTracking(false); };
   window.stopEyeTracking = stopEyeTracking;
   window.calibrateEye = calibrateEye;
@@ -1238,7 +1236,7 @@
   // ---- CARREGA O WEBGAZER NA INICIALIZAÇÃO ----
   loadWebGazer()
     .then(() => {
-      console.log('WebGazer carregado com sucesso.');
+      console.log('WebGazer carregado. Configurando tracker clmtrackr...');
       // Se o usuário já tinha ativado, inicia automaticamente
       if (localStorage.getItem('eyeTracking') === 'true') {
         startEyeTracking(false);
@@ -1255,9 +1253,7 @@
       webgazer.end();
     }
   });
-
-})();
-  
+})();  
   </script>
 
  </script>
